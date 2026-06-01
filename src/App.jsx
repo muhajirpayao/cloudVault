@@ -1,128 +1,151 @@
 import { useState } from "react";
 
 const styles = `
-  @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=DM+Sans:wght@300;400;500;600&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap');
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow-x: hidden; }
 
-  body { margin: 0; }
+  :root {
+    --teal: #00C9A7;
+    --teal2: #00A888;
+    --teal3: #0097B2;
+    --teal-light: #7FFFD4;
+    --bg: #f5f7fa;
+    --white: #fff;
+    --text: #111827;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --red: #FF6B6B;
+    --nunito: 'Nunito', sans-serif;
+    --dm: 'DM Sans', sans-serif;
+    /* Fluid sizing */
+    --r: clamp(12px, 3.5vw, 18px);
+  }
 
   .cv-app {
-    font-family: 'DM Sans', sans-serif;
-    min-height: 100vh;
-    background: #fff;
+    font-family: var(--dm);
+    min-height: 100%;
+    background: var(--bg);
     overflow-x: hidden;
+    max-width: 480px;
+    margin: 0 auto;
+    position: relative;
   }
 
-  /* ══════════════════════════════
+  /* ══════════════════════
      LOGIN PAGE
-  ══════════════════════════════ */
-
+  ══════════════════════ */
   .login-page {
-    min-height: 100vh;
+    min-height: 100svh;
     display: flex;
     flex-direction: column;
-    background: #fff;
+    background: var(--white);
+    overflow: hidden;
   }
 
-  /* Teal hero top */
+  /* Teal hero - illustration area */
   .login-hero {
-    background: linear-gradient(150deg, #00D4B8 0%, #00B5C8 55%, #0094B0 100%);
-    padding: 52px 28px 52px;
+    background: linear-gradient(160deg, #00D4B8 0%, #00B5C8 50%, #0094B0 100%);
+    flex: 0 0 auto;
     position: relative;
     overflow: hidden;
-    flex: 0 0 auto;
-    min-height: 260px;
     display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
+    align-items: center;
+    justify-content: center;
+    padding: clamp(28px, 8vw, 52px) clamp(20px, 6vw, 40px) clamp(36px, 10vw, 60px);
+    min-height: clamp(260px, 45svh, 360px);
   }
 
+  /* Decorative circles */
   .login-hero::before {
     content: '';
     position: absolute;
-    width: 320px; height: 320px;
+    width: clamp(180px, 65vw, 320px);
+    height: clamp(180px, 65vw, 320px);
     border-radius: 50%;
     border: 2px solid rgba(255,255,255,0.13);
-    top: -80px; right: -80px;
+    top: -20%; right: -15%;
   }
-
   .login-hero::after {
     content: '';
     position: absolute;
-    width: 200px; height: 200px;
+    width: clamp(100px, 40vw, 200px);
+    height: clamp(100px, 40vw, 200px);
     border-radius: 50%;
     border: 2px solid rgba(255,255,255,0.09);
-    top: 40px; right: 60px;
+    top: 10%; right: 8%;
   }
 
-  /* Curly deco lines top-right like reference */
-  .hero-deco {
-    position: absolute;
-    top: 18px; right: 18px;
-    opacity: 0.18;
-  }
-
-  .hero-deco svg { width: 90px; height: 90px; stroke: #fff; fill: none; stroke-width: 1.5; }
-
-  /* Gear icons bottom-left like reference */
-  .hero-gears {
-    position: absolute;
-    bottom: 20px; left: -10px;
-    opacity: 0.15;
-  }
-
-  .hero-gears svg { width: 110px; height: 110px; stroke: #fff; fill: none; stroke-width: 1.2; }
-
-  .login-hero-text h1 {
-    font-family: 'Nunito', sans-serif;
-    font-size: 30px;
-    font-weight: 900;
-    color: #fff;
-    line-height: 1.25;
+  /* SVG illustration */
+  .hero-illustration {
     position: relative;
     z-index: 2;
+    width: clamp(180px, 60vw, 260px);
+    height: clamp(180px, 60vw, 260px);
+    flex-shrink: 0;
   }
 
-  .login-hero-text h1 .accent { color: #7FFFD4; }
-
-  /* White card bottom */
+  /* Card slides up */
   .login-card {
-    background: #fff;
-    border-radius: 28px 28px 0 0;
-    padding: 32px 28px 40px;
-    margin-top: -20px;
+    background: var(--white);
+    border-radius: clamp(20px, 6vw, 32px) clamp(20px, 6vw, 32px) 0 0;
+    padding: clamp(24px, 6vw, 36px) clamp(20px, 6vw, 32px) clamp(28px, 7vw, 44px);
+    margin-top: clamp(-22px, -5vw, -28px);
     flex: 1;
     position: relative;
     z-index: 3;
-    box-shadow: 0 -6px 30px rgba(0,0,0,0.06);
+    box-shadow: 0 -8px 32px rgba(0,0,0,0.07);
   }
 
-  .login-card-title {
-    font-family: 'Nunito', sans-serif;
-    font-size: 26px;
+  .login-brand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: clamp(4px, 1.5vw, 8px);
+  }
+
+  .login-brand-icon {
+    width: clamp(30px, 8vw, 38px);
+    height: clamp(30px, 8vw, 38px);
+    background: linear-gradient(135deg, var(--teal), var(--teal3));
+    border-radius: clamp(8px, 2.5vw, 12px);
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  .login-brand-icon svg { width: 55%; height: 55%; stroke: #fff; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+
+  .login-brand-name {
+    font-family: var(--nunito);
+    font-size: clamp(18px, 5vw, 24px);
+    font-weight: 900;
+    color: var(--text);
+  }
+
+  .login-brand-name span { color: var(--teal2); }
+
+  .login-headline {
+    font-family: var(--nunito);
+    font-size: clamp(19px, 5.5vw, 26px);
     font-weight: 800;
-    color: #111827;
-    margin-bottom: 6px;
+    color: var(--text);
+    text-align: center;
+    line-height: 1.25;
+    margin-bottom: clamp(4px, 1.5vw, 8px);
   }
 
-  .login-card-sub {
-    font-size: 13px;
-    color: #6b7280;
-    margin-bottom: 28px;
+  .login-sub {
+    font-size: clamp(12px, 3.2vw, 14px);
+    color: var(--muted);
+    text-align: center;
+    margin-bottom: clamp(20px, 5vw, 30px);
+    line-height: 1.5;
+    padding: 0 clamp(4px, 2vw, 16px);
   }
 
-  .login-card-sub a {
-    color: #00A888;
-    font-weight: 600;
-    cursor: pointer;
-    text-decoration: none;
-  }
-
-  /* Input fields - pill style like reference */
-  .cv-field {
-    margin-bottom: 16px;
-  }
+  /* Input fields */
+  .cv-field { margin-bottom: clamp(12px, 3.5vw, 16px); }
 
   .cv-input-wrap {
     position: relative;
@@ -131,33 +154,33 @@ const styles = `
     background: #f5f6f8;
     border-radius: 99px;
     border: 1.5px solid #f0f1f3;
-    transition: border-color 0.2s, box-shadow 0.2s;
+    transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
   }
 
   .cv-input-wrap:focus-within {
-    border-color: #00C9A7;
-    box-shadow: 0 0 0 3px rgba(0,201,167,0.1);
-    background: #fff;
+    border-color: var(--teal);
+    box-shadow: 0 0 0 3px rgba(0,201,167,0.12);
+    background: var(--white);
   }
 
   .cv-input-wrap .field-icon {
     position: absolute;
-    left: 18px;
-    width: 18px; height: 18px;
+    left: clamp(14px, 4vw, 18px);
+    width: clamp(15px, 4vw, 18px);
+    height: clamp(15px, 4vw, 18px);
     stroke: #b0b5be; fill: none; stroke-width: 1.8;
     stroke-linecap: round; stroke-linejoin: round;
     pointer-events: none;
-    flex-shrink: 0;
   }
 
   .cv-input {
     width: 100%;
-    padding: 16px 18px 16px 48px;
+    padding: clamp(13px, 3.8vw, 16px) clamp(14px, 4vw, 18px) clamp(13px, 3.8vw, 16px) clamp(42px, 11vw, 50px);
     border: none;
     background: transparent;
-    font-size: 14px;
-    font-family: 'DM Sans', sans-serif;
-    color: #111827;
+    font-size: clamp(13px, 3.5vw, 15px);
+    font-family: var(--dm);
+    color: var(--text);
     outline: none;
     border-radius: 99px;
   }
@@ -166,115 +189,59 @@ const styles = `
 
   .cv-eye {
     position: absolute;
-    right: 18px;
+    right: clamp(14px, 4vw, 18px);
     cursor: pointer;
-    width: 18px; height: 18px;
+    width: clamp(15px, 4vw, 18px);
+    height: clamp(15px, 4vw, 18px);
     stroke: #b0b5be; fill: none; stroke-width: 1.8;
     stroke-linecap: round; stroke-linejoin: round;
+    padding: 2px;
   }
 
-  /* Remember / Forgot row */
   .cv-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin: 4px 4px 24px;
+    margin: clamp(2px, 1vw, 4px) clamp(2px, 1vw, 6px) clamp(18px, 5vw, 24px);
   }
 
-  .cv-remember {
-    display: flex; align-items: center; gap: 7px;
-  }
+  .cv-remember { display: flex; align-items: center; gap: 6px; }
+  .cv-remember input { accent-color: var(--teal); width: 14px; height: 14px; }
+  .cv-remember span { font-size: clamp(12px, 3.2vw, 13px); color: var(--muted); }
+  .cv-forgot { font-size: clamp(12px, 3.2vw, 13px); color: var(--teal2); font-weight: 600; cursor: pointer; }
 
-  .cv-remember input { accent-color: #00C9A7; width: 15px; height: 15px; }
-  .cv-remember span { font-size: 13px; color: #6b7280; }
-
-  .cv-forgot {
-    font-size: 13px;
-    color: #00A888;
-    font-weight: 600;
-    cursor: pointer;
-  }
-
-  /* Main CTA button - pill */
   .cv-btn-main {
     width: 100%;
-    padding: 17px;
-    background: linear-gradient(135deg, #00D4B8 0%, #0097B2 100%);
+    padding: clamp(14px, 4vw, 17px);
+    background: linear-gradient(135deg, var(--teal) 0%, var(--teal3) 100%);
     border: none;
     border-radius: 99px;
-    font-family: 'Nunito', sans-serif;
-    font-size: 16px;
+    font-family: var(--nunito);
+    font-size: clamp(14px, 4vw, 16px);
     font-weight: 700;
     color: #fff;
     cursor: pointer;
     letter-spacing: 0.3px;
-    transition: opacity 0.2s, transform 0.1s;
-    margin-bottom: 22px;
+    transition: opacity 0.2s, transform 0.12s;
     box-shadow: 0 6px 22px rgba(0,180,160,0.35);
   }
 
-  .cv-btn-main:hover { opacity: 0.92; }
+  .cv-btn-main:hover { opacity: 0.93; }
   .cv-btn-main:active { transform: scale(0.98); }
 
-  /* Divider */
-  .cv-divider {
-    display: flex; align-items: center; gap: 12px;
-    margin-bottom: 20px;
-  }
-
-  .cv-divider-line { flex: 1; height: 1px; background: #eef0f2; }
-  .cv-divider span { font-size: 12px; color: #b0b5be; white-space: nowrap; }
-
-  /* Social buttons - pill, matching reference exactly */
-  .cv-socials {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-  }
-
-  .cv-social {
-    display: flex; align-items: center; justify-content: center;
-    gap: 8px;
-    padding: 14px;
-    border-radius: 99px;
-    cursor: pointer;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 14px;
-    font-weight: 600;
-    transition: opacity 0.2s, transform 0.1s;
-    border: none;
-  }
-
-  .cv-social:active { transform: scale(0.97); }
-
-  /* Apple = dark navy like reference */
-  .cv-social.apple {
-    background: #1a1f2e;
-    color: #fff;
-  }
-
-  /* Google = white with border like reference */
-  .cv-social.google {
-    background: #fff;
-    color: #374151;
-    border: 1.5px solid #e5e7eb;
-  }
-
-  /* ══════════════════════════════
+  /* ══════════════════════
      HOME PAGE
-  ══════════════════════════════ */
-
+  ══════════════════════ */
   .home-page {
-    min-height: 100vh;
+    min-height: 100svh;
     display: flex;
     flex-direction: column;
     background: #f5f7fa;
   }
 
-  /* Teal top header */
   .home-header {
     background: linear-gradient(150deg, #00D4B8 0%, #00B5C8 55%, #0094B0 100%);
-    padding: 48px 28px 48px;
+    padding: clamp(36px, 10vw, 52px) clamp(18px, 5vw, 28px) clamp(22px, 6vw, 32px);
     position: relative;
     overflow: hidden;
   }
@@ -282,55 +249,46 @@ const styles = `
   .home-header::before {
     content: '';
     position: absolute;
-    width: 320px; height: 320px;
+    width: clamp(200px, 70vw, 320px);
+    height: clamp(200px, 70vw, 320px);
     border-radius: 50%;
     border: 2px solid rgba(255,255,255,0.1);
-    top: -100px; right: -80px;
-  }
-
-  .home-header::after {
-    content: '';
-    position: absolute;
-    width: 180px; height: 180px;
-    border-radius: 50%;
-    border: 2px solid rgba(255,255,255,0.08);
-    top: 30px; right: 50px;
+    top: -25%; right: -15%;
   }
 
   .home-header-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 28px;
+    margin-bottom: clamp(18px, 5vw, 28px);
     position: relative;
     z-index: 2;
   }
 
-  .home-brand {
-    display: flex; align-items: center; gap: 10px;
-  }
+  .home-brand { display: flex; align-items: center; gap: clamp(7px, 2vw, 10px); }
 
   .home-brand-icon {
-    width: 38px; height: 38px;
+    width: clamp(32px, 9vw, 40px);
+    height: clamp(32px, 9vw, 40px);
     background: rgba(255,255,255,0.2);
-    border-radius: 12px;
+    border-radius: clamp(9px, 2.5vw, 13px);
     display: flex; align-items: center; justify-content: center;
     backdrop-filter: blur(6px);
   }
 
-  .home-brand-icon svg { width: 20px; height: 20px; stroke: #fff; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .home-brand-icon svg { width: 55%; height: 55%; stroke: #fff; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
   .home-brand-name {
-    font-family: 'Nunito', sans-serif;
-    font-size: 19px;
+    font-family: var(--nunito);
+    font-size: clamp(15px, 4.5vw, 20px);
     font-weight: 800;
     color: #fff;
   }
-
-  .home-brand-name span { color: #7FFFD4; }
+  .home-brand-name span { color: var(--teal-light); }
 
   .home-notif {
-    width: 38px; height: 38px;
+    width: clamp(32px, 9vw, 40px);
+    height: clamp(32px, 9vw, 40px);
     background: rgba(255,255,255,0.18);
     border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
@@ -339,128 +297,68 @@ const styles = `
     backdrop-filter: blur(4px);
   }
 
-  .home-notif svg { width: 18px; height: 18px; stroke: #fff; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .home-notif svg { width: 55%; height: 55%; stroke: #fff; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .notif-dot { position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; background: var(--red); border-radius: 50%; border: 1.5px solid #00B5C8; }
 
-  .notif-dot { position: absolute; top: 7px; right: 7px; width: 8px; height: 8px; background: #FF6B6B; border-radius: 50%; border: 1.5px solid #00B5C8; }
-
-  /* Greeting */
-  .home-greeting {
-    position: relative;
-    z-index: 2;
-    margin-bottom: 22px;
-  }
-
-  .home-greeting-sub { font-size: 13px; color: rgba(255,255,255,0.75); margin-bottom: 2px; }
-
-  .home-greeting-name {
-    font-family: 'Nunito', sans-serif;
-    font-size: 27px;
-    font-weight: 900;
-    color: #fff;
-    line-height: 1.2;
-    margin-bottom: 4px;
-  }
-
-  .home-greeting-name span { color: #7FFFD4; }
-  .home-greeting-desc { font-size: 13px; color: rgba(255,255,255,0.7); }
+  .home-greeting { position: relative; z-index: 2; margin-bottom: clamp(16px, 4.5vw, 24px); }
+  .home-greeting-sub { font-size: clamp(11px, 3vw, 13px); color: rgba(255,255,255,0.75); margin-bottom: 2px; }
+  .home-greeting-name { font-family: var(--nunito); font-size: clamp(21px, 6.5vw, 28px); font-weight: 900; color: #fff; line-height: 1.2; margin-bottom: 3px; }
+  .home-greeting-name span { color: var(--teal-light); }
+  .home-greeting-desc { font-size: clamp(11px, 3vw, 13px); color: rgba(255,255,255,0.7); }
 
   /* Storage card */
   .storage-card {
     background: rgba(255,255,255,0.16);
     border: 1px solid rgba(255,255,255,0.22);
-    border-radius: 20px;
-    padding: 18px 20px;
+    border-radius: clamp(14px, 4vw, 20px);
+    padding: clamp(14px, 4vw, 18px) clamp(14px, 4.5vw, 20px);
     backdrop-filter: blur(10px);
     position: relative;
     z-index: 2;
   }
 
-  .storage-top {
-    display: flex; justify-content: space-between; align-items: center;
-    margin-bottom: 12px;
-  }
-
-  .storage-lbl { font-size: 12px; color: rgba(255,255,255,0.7); font-weight: 500; text-transform: uppercase; letter-spacing: 0.8px; }
-  .storage-amt { font-family: 'Nunito', sans-serif; font-size: 13px; font-weight: 700; color: #7FFFD4; }
-
-  .storage-track { height: 8px; background: rgba(255,255,255,0.18); border-radius: 99px; overflow: visible; margin-bottom: 12px; position: relative; }
-
-  .storage-fill {
-    height: 100%;
-    width: 62%;
-    background: linear-gradient(90deg, #7FFFD4, #fff);
-    border-radius: 99px;
-    position: relative;
-  }
-
-  .storage-fill::after {
-    content: '';
-    position: absolute;
-    right: -4px; top: 50%;
-    transform: translateY(-50%);
-    width: 14px; height: 14px;
-    background: #fff;
-    border-radius: 50%;
-    border: 2.5px solid #00B5C8;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
-  }
-
-  .storage-types { display: flex; gap: 16px; flex-wrap: wrap; }
-  .storage-type-item { display: flex; align-items: center; gap: 6px; }
-  .s-dot { width: 8px; height: 8px; border-radius: 50%; }
-  .storage-type-item span { font-size: 12px; color: rgba(255,255,255,0.72); }
+  .storage-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: clamp(8px, 2.5vw, 12px); }
+  .storage-lbl { font-size: clamp(9px, 2.5vw, 12px); color: rgba(255,255,255,0.7); font-weight: 500; text-transform: uppercase; letter-spacing: 0.8px; }
+  .storage-amt { font-family: var(--nunito); font-size: clamp(11px, 3vw, 13px); font-weight: 700; color: var(--teal-light); }
+  .storage-track { height: clamp(6px, 1.8vw, 8px); background: rgba(255,255,255,0.18); border-radius: 99px; overflow: visible; margin-bottom: clamp(10px, 3vw, 13px); position: relative; }
+  .storage-fill { height: 100%; width: 62%; background: linear-gradient(90deg, #7FFFD4, #fff); border-radius: 99px; position: relative; }
+  .storage-fill::after { content: ''; position: absolute; right: -4px; top: 50%; transform: translateY(-50%); width: clamp(10px, 3vw, 14px); height: clamp(10px, 3vw, 14px); background: #fff; border-radius: 50%; border: 2px solid #00B5C8; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
+  .storage-types { display: flex; gap: clamp(10px, 3vw, 16px); flex-wrap: wrap; }
+  .storage-type-item { display: flex; align-items: center; gap: 5px; }
+  .s-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .storage-type-item span { font-size: clamp(10px, 2.8vw, 12px); color: rgba(255,255,255,0.72); }
 
   /* White body */
   .home-body {
-    background: #fff;
-    border-radius: 28px 28px 0 0;
-    margin-top: -18px;
-    padding: 28px 24px 100px;
+    background: var(--white);
+    border-radius: clamp(20px, 6vw, 28px) clamp(20px, 6vw, 28px) 0 0;
+    margin-top: clamp(-14px, -4vw, -18px);
+    padding: clamp(18px, 5vw, 28px) clamp(16px, 5vw, 24px) clamp(90px, 22vw, 110px);
     flex: 1;
     box-shadow: 0 -6px 24px rgba(0,0,0,0.05);
+    overflow-x: hidden;
   }
 
-  .sheet-pill {
-    width: 36px; height: 4px;
-    background: #e5e7eb;
-    border-radius: 99px;
-    margin: 0 auto 26px;
-  }
+  .sheet-pill { width: 34px; height: 4px; background: var(--border); border-radius: 99px; margin: 0 auto clamp(18px, 5vw, 26px); }
 
-  .sec-header {
-    display: flex; justify-content: space-between; align-items: center;
-    margin-bottom: 16px;
-  }
-
-  .sec-title {
-    font-family: 'Nunito', sans-serif;
-    font-size: 16px;
-    font-weight: 800;
-    color: #111827;
-  }
-
-  .sec-link { font-size: 13px; color: #00A888; font-weight: 600; cursor: pointer; }
+  .sec-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: clamp(12px, 3.5vw, 16px); }
+  .sec-title { font-family: var(--nunito); font-size: clamp(14px, 4vw, 17px); font-weight: 800; color: var(--text); }
+  .sec-link { font-size: clamp(11px, 3vw, 13px); color: var(--teal2); font-weight: 600; cursor: pointer; }
 
   /* Quick actions */
-  .quick-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 14px;
-    margin-bottom: 32px;
-  }
+  .quick-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: clamp(8px, 2.5vw, 14px); margin-bottom: clamp(22px, 6vw, 32px); }
 
-  .qa-btn {
-    display: flex; flex-direction: column; align-items: center; gap: 8px; cursor: pointer;
-  }
+  .qa-btn { display: flex; flex-direction: column; align-items: center; gap: clamp(5px, 1.5vw, 8px); cursor: pointer; transition: transform 0.15s; }
+  .qa-btn:active { transform: scale(0.93); }
 
   .qa-icon {
-    width: 58px; height: 58px;
-    border-radius: 18px;
+    width: clamp(46px, 14vw, 58px);
+    height: clamp(46px, 14vw, 58px);
+    border-radius: clamp(13px, 4vw, 18px);
     display: flex; align-items: center; justify-content: center;
   }
 
-  .qa-icon svg { width: 24px; height: 24px; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; fill: none; }
-
+  .qa-icon svg { width: clamp(20px, 5.5vw, 24px); height: clamp(20px, 5.5vw, 24px); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; fill: none; }
   .qa-icon.teal   { background: linear-gradient(135deg, #CFFAF4, #99F6E4); }
   .qa-icon.teal svg { stroke: #059669; }
   .qa-icon.blue   { background: linear-gradient(135deg, #DBEAFE, #BFDBFE); }
@@ -469,27 +367,77 @@ const styles = `
   .qa-icon.violet svg { stroke: #6D28D9; }
   .qa-icon.rose   { background: linear-gradient(135deg, #FFE4E6, #FECDD3); }
   .qa-icon.rose svg { stroke: #BE123C; }
+  .qa-icon.amber  { background: linear-gradient(135deg, #FEF9C3, #FEF08A); }
+  .qa-icon.amber svg { stroke: #A16207; }
+  .qa-icon.sky    { background: linear-gradient(135deg, #E0F2FE, #BAE6FD); }
+  .qa-icon.sky svg { stroke: #0369A1; }
+  .qa-icon.emerald { background: linear-gradient(135deg, #D1FAE5, #A7F3D0); }
+  .qa-icon.emerald svg { stroke: #047857; }
+  .qa-icon.slate  { background: linear-gradient(135deg, #F1F5F9, #E2E8F0); }
+  .qa-icon.slate svg { stroke: #475569; }
 
-  .qa-label { font-size: 11px; font-weight: 600; color: #374151; text-align: center; }
+  .qa-label { font-size: clamp(9px, 2.6vw, 11px); font-weight: 600; color: #374151; text-align: center; line-height: 1.2; }
 
-  /* Recent files */
-  .file-list { margin-bottom: 30px; }
+  /* Upload modal overlay */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 200; display: flex; align-items: flex-end;
+    backdrop-filter: blur(3px);
+    animation: fadeIn 0.2s ease;
+  }
+
+  .modal-sheet {
+    background: var(--white);
+    border-radius: clamp(20px, 6vw, 28px) clamp(20px, 6vw, 28px) 0 0;
+    padding: clamp(20px, 6vw, 28px) clamp(18px, 5vw, 26px) clamp(28px, 8vw, 40px);
+    width: 100%;
+    animation: slideUp 0.25s ease;
+  }
+
+  @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+  @keyframes fadeIn  { from { opacity: 0; } to { opacity: 1; } }
+
+  .modal-pill { width: 34px; height: 4px; background: var(--border); border-radius: 99px; margin: 0 auto clamp(16px, 4.5vw, 22px); }
+  .modal-title { font-family: var(--nunito); font-size: clamp(16px, 4.5vw, 20px); font-weight: 800; color: var(--text); margin-bottom: clamp(14px, 4vw, 20px); }
+
+  .upload-options { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(10px, 3vw, 14px); }
+
+  .upload-opt {
+    display: flex; flex-direction: column; align-items: center; gap: clamp(8px, 2.5vw, 11px);
+    padding: clamp(14px, 4vw, 20px) clamp(10px, 3vw, 16px);
+    border-radius: clamp(14px, 4vw, 18px);
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    border: 1.5px solid var(--border);
+  }
+
+  .upload-opt:active { transform: scale(0.96); }
+
+  .upload-opt-icon { width: clamp(44px, 12vw, 54px); height: clamp(44px, 12vw, 54px); border-radius: clamp(12px, 3.5vw, 16px); display: flex; align-items: center; justify-content: center; }
+  .upload-opt-icon svg { width: 55%; height: 55%; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+  .upload-opt-label { font-size: clamp(12px, 3.2vw, 14px); font-weight: 600; color: var(--text); }
+  .upload-opt-sub { font-size: clamp(10px, 2.8vw, 11px); color: var(--muted); text-align: center; }
+
+  /* Recent Files */
+  .file-list { margin-bottom: clamp(22px, 6vw, 30px); }
 
   .file-row {
-    display: flex; align-items: center; gap: 14px;
-    padding: 13px 0;
+    display: flex; align-items: center; gap: clamp(10px, 3vw, 14px);
+    padding: clamp(10px, 3vw, 13px) 0;
     border-bottom: 1px solid #f3f4f6;
     cursor: pointer;
+    transition: background 0.15s;
+    border-radius: 8px;
   }
 
   .file-thumb {
-    width: 48px; height: 48px;
-    border-radius: 14px;
+    width: clamp(40px, 12vw, 50px);
+    height: clamp(40px, 12vw, 50px);
+    border-radius: clamp(10px, 3vw, 14px);
     display: flex; align-items: center; justify-content: center;
     flex-shrink: 0;
   }
 
-  .file-thumb svg { width: 22px; height: 22px; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+  .file-thumb svg { width: clamp(18px, 5vw, 22px); height: clamp(18px, 5vw, 22px); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; fill: none; }
   .ft-img { background: linear-gradient(135deg, #CFFAF4, #99F6E4); }
   .ft-img svg { stroke: #059669; }
   .ft-vid { background: linear-gradient(135deg, #EDE9FE, #DDD6FE); }
@@ -498,98 +446,184 @@ const styles = `
   .ft-doc svg { stroke: #A16207; }
 
   .file-info { flex: 1; min-width: 0; }
-  .file-name { font-size: 14px; font-weight: 600; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 3px; }
-  .file-meta { font-size: 12px; color: #9ca3af; }
-  .file-size { font-size: 12px; font-weight: 600; color: #6b7280; flex-shrink: 0; }
+  .file-name { font-size: clamp(12px, 3.5vw, 14px); font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 2px; }
+  .file-meta { font-size: clamp(10px, 2.8vw, 12px); color: #9ca3af; }
+  .file-size { font-size: clamp(10px, 2.8vw, 12px); font-weight: 600; color: #6b7280; flex-shrink: 0; }
 
-  /* Media gallery grid */
-  .media-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
-  }
+  /* Three-dot menu on file */
+  .file-dots { padding: 4px; cursor: pointer; color: #9ca3af; font-size: 16px; letter-spacing: 1px; flex-shrink: 0; }
+
+  /* Media gallery */
+  .media-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(6px, 2vw, 8px); }
 
   .media-cell {
     aspect-ratio: 1;
-    border-radius: 14px;
+    border-radius: clamp(10px, 3vw, 14px);
     overflow: hidden;
     cursor: pointer;
     position: relative;
     display: flex; align-items: center; justify-content: center;
+    transition: transform 0.15s;
   }
 
-  .media-cell svg { width: 30px; height: 30px; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; fill: none; opacity: 0.45; }
-
-  .mc1 { background: linear-gradient(135deg, #99F6E4, #5EEAD4); }
-  .mc1 svg { stroke: #0F766E; }
-  .mc2 { background: linear-gradient(135deg, #C4B5FD, #A78BFA); }
-  .mc2 svg { stroke: #4C1D95; }
-  .mc3 { background: linear-gradient(135deg, #FED7AA, #FDBA74); }
-  .mc3 svg { stroke: #92400E; }
-  .mc4 { background: linear-gradient(135deg, #BAE6FD, #7DD3FC); }
-  .mc4 svg { stroke: #075985; }
-  .mc5 { background: linear-gradient(135deg, #FECDD3, #FDA4AF); }
-  .mc5 svg { stroke: #881337; }
-  .mc6 { background: linear-gradient(135deg, #D9F99D, #BEF264); }
-  .mc6 svg { stroke: #3F6212; }
+  .media-cell:active { transform: scale(0.96); }
+  .media-cell svg { width: clamp(22px, 6.5vw, 30px); height: clamp(22px, 6.5vw, 30px); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; fill: none; opacity: 0.45; }
+  .mc1 { background: linear-gradient(135deg, #99F6E4, #5EEAD4); } .mc1 svg { stroke: #0F766E; }
+  .mc2 { background: linear-gradient(135deg, #C4B5FD, #A78BFA); } .mc2 svg { stroke: #4C1D95; }
+  .mc3 { background: linear-gradient(135deg, #FED7AA, #FDBA74); } .mc3 svg { stroke: #92400E; }
+  .mc4 { background: linear-gradient(135deg, #BAE6FD, #7DD3FC); } .mc4 svg { stroke: #075985; }
+  .mc5 { background: linear-gradient(135deg, #FECDD3, #FDA4AF); } .mc5 svg { stroke: #881337; }
+  .mc6 { background: linear-gradient(135deg, #D9F99D, #BEF264); } .mc6 svg { stroke: #3F6212; }
 
   .vid-tag {
-    position: absolute; bottom: 7px; right: 7px;
-    background: rgba(0,0,0,0.42);
-    color: #fff; font-size: 9px; font-weight: 700;
-    padding: 2px 7px; border-radius: 99px;
+    position: absolute; bottom: 6px; right: 6px;
+    background: rgba(0,0,0,0.45); color: #fff;
+    font-size: clamp(8px, 2.2vw, 10px); font-weight: 700;
+    padding: 2px clamp(5px, 1.5vw, 7px); border-radius: 99px;
     backdrop-filter: blur(4px);
   }
 
-  /* Bottom nav */
+  /* Bottom Nav */
   .bottom-nav {
-    position: fixed;
-    bottom: 0; left: 0; right: 0;
-    background: #fff;
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: var(--white);
     border-top: 1px solid #f0f1f3;
-    display: flex;
-    justify-content: space-around;
-    align-items: center;
-    padding: 10px 0 20px;
+    display: flex; justify-content: space-around; align-items: center;
+    padding: clamp(8px, 2.5vw, 12px) 0 clamp(14px, 5vw, 22px);
     box-shadow: 0 -4px 24px rgba(0,0,0,0.07);
     z-index: 100;
+    max-width: 480px;
+    margin: 0 auto;
   }
 
-  .nav-item {
-    display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: pointer;
-  }
+  .nav-item { display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: pointer; }
 
   .nav-icon-wrap {
-    width: 40px; height: 40px;
-    border-radius: 13px;
+    width: clamp(34px, 9.5vw, 42px);
+    height: clamp(34px, 9.5vw, 42px);
+    border-radius: clamp(10px, 3vw, 14px);
     display: flex; align-items: center; justify-content: center;
     transition: background 0.2s;
   }
 
   .nav-icon-wrap.active { background: linear-gradient(135deg, #CFFAF4, #99F6E4); }
-  .nav-icon-wrap svg { width: 20px; height: 20px; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; fill: none; stroke: #9ca3af; }
+  .nav-icon-wrap svg { width: clamp(16px, 4.5vw, 20px); height: clamp(16px, 4.5vw, 20px); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; fill: none; stroke: #9ca3af; }
   .nav-icon-wrap.active svg { stroke: #059669; }
-  .nav-lbl { font-size: 10px; font-weight: 600; color: #9ca3af; }
+  .nav-lbl { font-size: clamp(9px, 2.4vw, 11px); font-weight: 600; color: #9ca3af; }
   .nav-lbl.active { color: #059669; }
 
   .nav-fab {
-    width: 54px; height: 54px;
-    background: linear-gradient(135deg, #00D4B8, #0097B2);
-    border-radius: 17px;
+    width: clamp(46px, 13vw, 56px);
+    height: clamp(46px, 13vw, 56px);
+    background: linear-gradient(135deg, var(--teal), var(--teal3));
+    border-radius: clamp(13px, 4vw, 18px);
     display: flex; align-items: center; justify-content: center;
     box-shadow: 0 6px 20px rgba(0,180,160,0.4);
-    margin-top: -10px;
+    margin-top: -8px;
     cursor: pointer;
+    transition: transform 0.15s;
   }
 
-  .nav-fab svg { width: 24px; height: 24px; stroke: #fff; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+  .nav-fab:active { transform: scale(0.94); }
+  .nav-fab svg { width: clamp(20px, 5.5vw, 24px); height: clamp(20px, 5.5vw, 24px); stroke: #fff; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* Profile page */
+  .profile-page { padding-bottom: clamp(90px, 22vw, 110px); }
+  .profile-header-area { background: linear-gradient(150deg, #00D4B8 0%, #00B5C8 55%, #0094B0 100%); padding: clamp(36px, 10vw, 52px) clamp(18px, 5vw, 28px) clamp(30px, 8vw, 44px); text-align: center; position: relative; }
+  .profile-avatar { width: clamp(64px, 18vw, 82px); height: clamp(64px, 18vw, 82px); background: rgba(255,255,255,0.22); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto clamp(10px, 3vw, 14px); border: 2.5px solid rgba(255,255,255,0.5); }
+  .profile-avatar svg { width: 55%; height: 55%; stroke: #fff; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .profile-name { font-family: var(--nunito); font-size: clamp(18px, 5.5vw, 24px); font-weight: 900; color: #fff; margin-bottom: 4px; }
+  .profile-email { font-size: clamp(11px, 3vw, 13px); color: rgba(255,255,255,0.75); }
+
+  .profile-body { background: var(--white); border-radius: clamp(20px, 6vw, 28px) clamp(20px, 6vw, 28px) 0 0; margin-top: clamp(-14px, -4vw, -18px); padding: clamp(20px, 5.5vw, 28px) clamp(16px, 5vw, 24px); }
+  .profile-stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(10px, 3vw, 14px); margin-bottom: clamp(22px, 6vw, 30px); }
+  .profile-stat { background: #f9fafb; border-radius: clamp(12px, 3.5vw, 16px); padding: clamp(12px, 3.5vw, 16px) clamp(8px, 2.5vw, 12px); text-align: center; }
+  .pstat-val { font-family: var(--nunito); font-size: clamp(16px, 4.8vw, 22px); font-weight: 900; color: var(--text); }
+  .pstat-lbl { font-size: clamp(9px, 2.5vw, 11px); color: var(--muted); margin-top: 2px; }
+
+  .menu-list { display: flex; flex-direction: column; gap: clamp(2px, 0.8vw, 4px); }
+  .menu-row {
+    display: flex; align-items: center; gap: clamp(12px, 3.5vw, 16px);
+    padding: clamp(13px, 3.8vw, 16px) clamp(8px, 2.5vw, 12px);
+    border-radius: clamp(12px, 3.5vw, 16px);
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .menu-row:hover { background: #f9fafb; }
+  .menu-row-icon { width: clamp(36px, 10vw, 44px); height: clamp(36px, 10vw, 44px); border-radius: clamp(10px, 3vw, 13px); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .menu-row-icon svg { width: 55%; height: 55%; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+  .menu-row-info { flex: 1; }
+  .menu-row-title { font-size: clamp(13px, 3.6vw, 15px); font-weight: 600; color: var(--text); }
+  .menu-row-sub { font-size: clamp(10px, 2.8vw, 12px); color: var(--muted); margin-top: 1px; }
+  .menu-row-arrow { color: #d1d5db; font-size: 18px; }
+
+  /* Logout row */
+  .logout-row { margin-top: clamp(16px, 4.5vw, 22px); }
+  .logout-btn {
+    width: 100%; padding: clamp(13px, 3.8vw, 15px);
+    background: #fff1f2; border: 1.5px solid #fecdd3;
+    border-radius: 99px; font-family: var(--nunito);
+    font-size: clamp(13px, 3.8vw, 15px); font-weight: 700;
+    color: #e11d48; cursor: pointer;
+    transition: opacity 0.2s, transform 0.12s;
+  }
+  .logout-btn:active { transform: scale(0.98); }
+
+  /* Toast */
+  .toast {
+    position: fixed; bottom: clamp(76px, 18vw, 90px); left: 50%; transform: translateX(-50%);
+    background: #111827; color: #fff;
+    font-size: clamp(12px, 3.2vw, 13px); font-weight: 600;
+    padding: clamp(9px, 2.5vw, 11px) clamp(16px, 4.5vw, 22px);
+    border-radius: 99px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+    z-index: 999; white-space: nowrap;
+    animation: fadeIn 0.2s ease;
+    max-width: 90vw;
+  }
+
+  /* Files page filter */
+  .filter-row { display: flex; gap: clamp(8px, 2.5vw, 12px); overflow-x: auto; padding-bottom: 4px; margin-bottom: clamp(14px, 4vw, 20px); scrollbar-width: none; }
+  .filter-row::-webkit-scrollbar { display: none; }
+  .filter-chip {
+    flex-shrink: 0; padding: clamp(6px, 2vw, 8px) clamp(12px, 3.5vw, 16px);
+    border-radius: 99px; font-size: clamp(11px, 3vw, 13px); font-weight: 600;
+    cursor: pointer; transition: all 0.15s;
+    border: 1.5px solid var(--border);
+    background: var(--white); color: var(--muted);
+  }
+  .filter-chip.active { background: var(--teal); border-color: var(--teal); color: #fff; box-shadow: 0 3px 10px rgba(0,180,160,0.3); }
+
+  /* Search bar */
+  .search-wrap {
+    display: flex; align-items: center; gap: clamp(10px, 3vw, 14px);
+    margin-bottom: clamp(16px, 4.5vw, 22px);
+  }
+
+  .search-bar {
+    flex: 1; display: flex; align-items: center; gap: clamp(8px, 2.5vw, 11px);
+    background: #f5f6f8; border-radius: 99px;
+    padding: clamp(10px, 3vw, 13px) clamp(14px, 4vw, 18px);
+    border: 1.5px solid var(--border);
+  }
+
+  .search-bar svg { width: clamp(14px, 4vw, 16px); height: clamp(14px, 4vw, 16px); stroke: #9ca3af; fill: none; stroke-width: 2; stroke-linecap: round; flex-shrink: 0; }
+  .search-bar input { border: none; background: transparent; outline: none; font-size: clamp(12px, 3.4vw, 14px); font-family: var(--dm); color: var(--text); width: 100%; }
+  .search-bar input::placeholder { color: #b0b5be; }
+
+  .sort-btn { width: clamp(38px, 10.5vw, 46px); height: clamp(38px, 10.5vw, 46px); background: #f5f6f8; border-radius: clamp(11px, 3vw, 14px); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; border: 1.5px solid var(--border); }
+  .sort-btn svg { width: 55%; height: 55%; stroke: #6b7280; fill: none; stroke-width: 2; stroke-linecap: round; }
 `;
 
-const files = [
-  { name: "Vacation_Photos.zip", meta: "Today, 2:14 PM", size: "124 MB", type: "img" },
-  { name: "Birthday_Video.mp4",  meta: "Yesterday",      size: "312 MB", type: "vid" },
-  { name: "Project_Docs.pdf",    meta: "Jun 1",           size: "8.2 MB", type: "doc" },
-  { name: "Selfie_Collection.jpg",meta:"May 30",          size: "45 MB",  type: "img" },
+/* ── DATA ── */
+const allFiles = [
+  { name: "Vacation_Photos.zip",    meta: "Today, 2:14 PM", size: "124 MB", type: "img", cat: "images" },
+  { name: "Birthday_Video.mp4",     meta: "Yesterday",       size: "312 MB", type: "vid", cat: "videos" },
+  { name: "Project_Docs.pdf",       meta: "Jun 1",            size: "8.2 MB", type: "doc", cat: "docs"   },
+  { name: "Selfie_Collection.jpg",  meta: "May 30",           size: "45 MB",  type: "img", cat: "images" },
+  { name: "Team_Meeting.mp4",       meta: "May 29",           size: "520 MB", type: "vid", cat: "videos" },
+  { name: "Resume_2025.pdf",        meta: "May 28",           size: "1.4 MB", type: "doc", cat: "docs"   },
+  { name: "Album_Covers.zip",       meta: "May 27",           size: "88 MB",  type: "img", cat: "images" },
 ];
 
 const mediaGrid = [
@@ -597,210 +631,178 @@ const mediaGrid = [
   { cls:"mc4", type:"img" }, { cls:"mc5", type:"vid" }, { cls:"mc6", type:"img" },
 ];
 
+/* ── ICONS ── */
+const CloudIcon = () => <svg viewBox="0 0 24 24"><path d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"/></svg>;
+const BellIcon  = () => <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>;
+const FileThumb = ({ type }) => {
+  if (type === "img") return <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>;
+  if (type === "vid") return <svg viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>;
+  return <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>;
+};
+
+/* ── LOGIN PAGE ── */
 function LoginPage({ onLogin }) {
-  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [remember, setRemember] = useState(false);
-  const [showPass, setShowPass] = useState(false);
+  const [pass, setPass]   = useState("");
+  const [show, setShow]   = useState(false);
+  const [rem, setRem]     = useState(false);
 
   return (
     <div className="login-page">
-      {/* Teal hero */}
+      {/* Teal hero with illustration */}
       <div className="login-hero">
-        <div className="hero-deco">
-          <svg viewBox="0 0 100 100">
-            <path d="M10 50 Q30 10 50 50 Q70 90 90 50" strokeLinecap="round"/>
-            <path d="M10 30 Q30 -10 50 30 Q70 70 90 30" strokeLinecap="round"/>
-            <path d="M10 70 Q30 30 50 70 Q70 110 90 70" strokeLinecap="round"/>
+        <div className="hero-illustration">
+          <svg viewBox="0 0 260 260" xmlns="http://www.w3.org/2000/svg">
+            {/* Background glow */}
+            <ellipse cx="130" cy="200" rx="90" ry="18" fill="rgba(0,0,0,0.1)"/>
+            {/* Main document card */}
+            <rect x="50" y="50" width="130" height="160" rx="14" fill="rgba(255,255,255,0.22)" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5"/>
+            <rect x="65" y="72" width="50" height="6" rx="3" fill="rgba(255,255,255,0.6)"/>
+            <rect x="65" y="85" width="80" height="6" rx="3" fill="rgba(255,255,255,0.4)"/>
+            <rect x="65" y="98" width="65" height="6" rx="3" fill="rgba(255,255,255,0.3)"/>
+            {/* Chart bar area */}
+            <rect x="65" y="116" width="100" height="54" rx="8" fill="rgba(255,255,255,0.12)"/>
+            <rect x="76" y="148" width="14" height="16" rx="3" fill="rgba(127,255,212,0.7)"/>
+            <rect x="96" y="136" width="14" height="28" rx="3" fill="rgba(127,255,212,0.85)"/>
+            <rect x="116" y="143" width="14" height="21" rx="3" fill="rgba(127,255,212,0.65)"/>
+            <rect x="136" y="130" width="14" height="34" rx="3" fill="#7FFFD4"/>
+            {/* Checkboxes */}
+            <rect x="65" y="182" width="14" height="14" rx="4" fill="rgba(255,255,255,0.25)" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5"/>
+            <polyline points="68,189 71,192 76,186" stroke="#7FFFD4" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+            <rect x="85" y="185" width="50" height="5" rx="2.5" fill="rgba(255,255,255,0.4)"/>
+            <rect x="65" y="200" width="14" height="14" rx="4" fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.3)" strokeWidth="1.5"/>
+            <rect x="85" y="203" width="40" height="5" rx="2.5" fill="rgba(255,255,255,0.25)"/>
+            {/* Person left */}
+            <circle cx="28" cy="115" r="12" fill="rgba(255,255,255,0.28)"/>
+            <circle cx="28" cy="109" r="5" fill="rgba(255,255,255,0.6)"/>
+            <path d="M18 125 Q28 118 38 125" fill="rgba(255,255,255,0.4)" stroke="none"/>
+            {/* Lightbulb */}
+            <circle cx="22" cy="145" r="8" fill="rgba(255,255,255,0.18)" stroke="rgba(255,255,255,0.4)" strokeWidth="1.2"/>
+            <path d="M22 139 v2 M17.5 141 l1.5 1.5 M26.5 141 l-1.5 1.5" stroke="rgba(255,255,212,0.7)" strokeWidth="1.2" fill="none" strokeLinecap="round"/>
+            {/* Person right */}
+            <circle cx="232" cy="100" r="12" fill="rgba(255,255,255,0.28)"/>
+            <circle cx="232" cy="94" r="5" fill="rgba(255,255,255,0.6)"/>
+            <path d="M222 110 Q232 103 242 110" fill="rgba(255,255,255,0.4)"/>
+            {/* Raised hands person */}
+            <line x1="225" y1="106" x2="218" y2="96" stroke="rgba(255,255,255,0.5)" strokeWidth="2.5" strokeLinecap="round"/>
+            <line x1="239" y1="106" x2="246" y2="95" stroke="rgba(255,255,255,0.5)" strokeWidth="2.5" strokeLinecap="round"/>
+            {/* Small floating card */}
+            <rect x="160" y="60" width="58" height="44" rx="10" fill="rgba(255,255,255,0.18)" stroke="rgba(255,255,255,0.35)" strokeWidth="1.2"/>
+            <rect x="168" y="72" width="30" height="5" rx="2.5" fill="rgba(255,255,255,0.5)"/>
+            <rect x="168" y="81" width="40" height="5" rx="2.5" fill="rgba(255,255,255,0.3)"/>
+            <rect x="168" y="90" width="24" height="5" rx="2.5" fill="rgba(255,255,255,0.2)"/>
+            {/* Ladder/steps */}
+            <line x1="210" y1="175" x2="210" y2="215" stroke="rgba(255,255,255,0.4)" strokeWidth="2.5" strokeLinecap="round"/>
+            <line x1="220" y1="175" x2="220" y2="215" stroke="rgba(255,255,255,0.4)" strokeWidth="2.5" strokeLinecap="round"/>
+            {[182,192,202,212].map(y => <line key={y} x1="210" y1={y} x2="220" y2={y} stroke="rgba(255,255,255,0.4)" strokeWidth="2" strokeLinecap="round"/>)}
+            {/* Decorative dots */}
+            <circle cx="46" cy="65" r="4" fill="rgba(255,255,212,0.4)"/>
+            <circle cx="214" cy="48" r="3" fill="rgba(127,255,212,0.5)"/>
+            <circle cx="240" cy="155" r="5" fill="rgba(255,255,255,0.2)"/>
           </svg>
-        </div>
-        <div className="hero-gears">
-          <svg viewBox="0 0 120 120">
-            <circle cx="45" cy="45" r="18"/>
-            <circle cx="45" cy="45" r="8"/>
-            {[0,45,90,135,180,225,270,315].map(a => {
-              const r = a * Math.PI / 180;
-              const x1 = 45 + 20*Math.cos(r), y1 = 45 + 20*Math.sin(r);
-              const x2 = 45 + 26*Math.cos(r), y2 = 45 + 26*Math.sin(r);
-              return <line key={a} x1={x1} y1={y1} x2={x2} y2={y2} strokeWidth="4" strokeLinecap="round"/>;
-            })}
-            <circle cx="80" cy="80" r="12"/>
-            <circle cx="80" cy="80" r="5"/>
-            {[0,60,120,180,240,300].map(a => {
-              const r = a * Math.PI / 180;
-              const x1 = 80 + 13*Math.cos(r), y1 = 80 + 13*Math.sin(r);
-              const x2 = 80 + 18*Math.cos(r), y2 = 80 + 18*Math.sin(r);
-              return <line key={a} x1={x1} y1={y1} x2={x2} y2={y2} strokeWidth="3" strokeLinecap="round"/>;
-            })}
-          </svg>
-        </div>
-        <div className="login-hero-text">
-          <h1>Log in to stay on<br/><span className="accent">top of</span> your files<br/>and projects.</h1>
         </div>
       </div>
 
       {/* White card */}
       <div className="login-card">
-        <p className="login-card-title">Login</p>
-        <p className="login-card-sub">Don't Have An Account? <a onClick={() => {}}>Sign Up</a></p>
-
-        {/* Name */}
-        <div className="cv-field">
-          <div className="cv-input-wrap">
-            <svg className="field-icon" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/>
-            </svg>
-            <input className="cv-input" placeholder="Michael Daniel Harris" value={name} onChange={e => setName(e.target.value)} />
-          </div>
+        <div className="login-brand">
+          <div className="login-brand-icon"><CloudIcon/></div>
+          <span className="login-brand-name">Cloud<span>Vault</span></span>
         </div>
+
+        <h2 className="login-headline">Let's Get You Set Up<br/>for Success</h2>
+        <p className="login-sub">Organize your files and manage storage easily — all in one simple, powerful app.</p>
 
         {/* Email */}
         <div className="cv-field">
           <div className="cv-input-wrap">
-            <svg className="field-icon" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round">
+            <svg className="field-icon" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" fill="none" stroke="#b0b5be" strokeWidth="1.8">
               <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>
             </svg>
-            <input className="cv-input" type="email" placeholder="Enter your email address" value={email} onChange={e => setEmail(e.target.value)} />
+            <input className="cv-input" type="email" placeholder="Enter your email address" value={email} onChange={e => setEmail(e.target.value)}/>
           </div>
         </div>
 
-        {/* Remember / Forgot */}
+        {/* Password */}
+        <div className="cv-field">
+          <div className="cv-input-wrap">
+            <svg className="field-icon" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" fill="none" stroke="#b0b5be" strokeWidth="1.8">
+              <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
+            </svg>
+            <input className="cv-input" type={show ? "text" : "password"} placeholder="Enter your password" value={pass} onChange={e => setPass(e.target.value)}/>
+            <svg className="cv-eye" viewBox="0 0 24 24" onClick={() => setShow(!show)} strokeLinecap="round" strokeLinejoin="round" fill="none" stroke="#b0b5be" strokeWidth="1.8">
+              {show
+                ? <><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></>
+                : <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>
+              }
+            </svg>
+          </div>
+        </div>
+
         <div className="cv-row">
           <label className="cv-remember">
-            <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} />
+            <input type="checkbox" checked={rem} onChange={e => setRem(e.target.checked)}/>
             <span>Remember Me</span>
           </label>
           <span className="cv-forgot">Forgot Password?</span>
         </div>
 
-        {/* Login button */}
-        <button className="cv-btn-main" onClick={onLogin}>Login</button>
-
-        {/* Divider */}
-        <div className="cv-divider">
-          <div className="cv-divider-line"/>
-          <span>Or Continue With</span>
-          <div className="cv-divider-line"/>
-        </div>
-
-        {/* Social buttons */}
-        <div className="cv-socials">
-          <button className="cv-social apple" onClick={onLogin}>
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="#fff">
-              <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
-            </svg>
-            Apple
-          </button>
-          <button className="cv-social google" onClick={onLogin}>
-            <svg width="17" height="17" viewBox="0 0 24 24">
-              <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-              <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-              <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-              <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-            </svg>
-            Google
-          </button>
-        </div>
+        <button className="cv-btn-main" onClick={onLogin}>Get Started</button>
       </div>
     </div>
   );
 }
 
-function HomePage({ onLogout }) {
-  const [activeNav, setActiveNav] = useState("home");
+/* ── HOME BODY ── */
+function HomeBody({ showToast }) {
+  const [showUpload, setShowUpload] = useState(false);
+
+  const actions = [
+    { color:"teal",    label:"Upload",    icon:<><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></> , fn: () => setShowUpload(true) },
+    { color:"blue",    label:"Photos",    icon:<><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></> , fn: () => showToast("📷 Opening Photos…") },
+    { color:"violet",  label:"Videos",    icon:<><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></> , fn: () => showToast("🎬 Opening Videos…") },
+    { color:"rose",    label:"Share",     icon:<><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></> , fn: () => showToast("🔗 Share link copied!") },
+  ];
 
   return (
-    <div className="home-page">
-      {/* Teal header */}
-      <div className="home-header">
-        <div className="home-header-row">
-          <div className="home-brand">
-            <div className="home-brand-icon">
-              <svg viewBox="0 0 24 24"><path d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"/></svg>
-            </div>
-            <span className="home-brand-name">Cloud<span>Vault</span></span>
-          </div>
-          <div className="home-notif" onClick={onLogout} title="Tap to logout">
-            <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
-            <div className="notif-dot"/>
-          </div>
-        </div>
-
-        <div className="home-greeting">
-          <p className="home-greeting-sub">Good afternoon 👋</p>
-          <h2 className="home-greeting-name">Michael <span>Daniel</span></h2>
-          <p className="home-greeting-desc">Your files are safe & organized</p>
-        </div>
-
-        <div className="storage-card">
-          <div className="storage-top">
-            <span className="storage-lbl">Storage Used</span>
-            <span className="storage-amt">12.4 GB / 20 GB</span>
-          </div>
-          <div className="storage-track">
-            <div className="storage-fill"/>
-          </div>
-          <div className="storage-types">
-            {[["#7FFFD4","Photos 4.2 GB"],["#C4B5FD","Videos 6.8 GB"],["#FDE68A","Docs 1.4 GB"]].map(([c,l]) => (
-              <div className="storage-type-item" key={l}>
-                <div className="s-dot" style={{background:c}}/>
-                <span>{l}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* White body */}
+    <>
       <div className="home-body">
         <div className="sheet-pill"/>
-
-        {/* Quick Actions */}
         <div className="sec-header"><span className="sec-title">Quick Actions</span></div>
         <div className="quick-grid">
-          {[
-            { color:"teal",  label:"Upload", icon:<><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></> },
-            { color:"blue",  label:"Photos", icon:<><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></> },
-            { color:"violet",label:"Videos", icon:<><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></> },
-            { color:"rose",  label:"Share",  icon:<><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></> },
-          ].map((a,i) => (
-            <div className="qa-btn" key={i}>
+          {actions.map((a,i) => (
+            <div className="qa-btn" key={i} onClick={a.fn}>
               <div className={`qa-icon ${a.color}`}><svg viewBox="0 0 24 24">{a.icon}</svg></div>
               <span className="qa-label">{a.label}</span>
             </div>
           ))}
         </div>
 
-        {/* Recent Files */}
         <div className="sec-header" style={{marginTop:4}}>
           <span className="sec-title">Recent Files</span>
           <span className="sec-link">See All</span>
         </div>
         <div className="file-list">
-          {files.map((f,i) => (
-            <div className="file-row" key={i}>
-              <div className={`file-thumb ft-${f.type}`}>
-                {f.type==="img" && <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>}
-                {f.type==="vid" && <svg viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>}
-                {f.type==="doc" && <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>}
-              </div>
+          {allFiles.slice(0,4).map((f,i) => (
+            <div className="file-row" key={i} onClick={() => showToast(`📂 Opening ${f.name}`)}>
+              <div className={`file-thumb ft-${f.type}`}><FileThumb type={f.type}/></div>
               <div className="file-info">
                 <p className="file-name">{f.name}</p>
                 <p className="file-meta">{f.meta}</p>
               </div>
               <span className="file-size">{f.size}</span>
+              <span className="file-dots" onClick={e => { e.stopPropagation(); showToast("⚙️ Options opened"); }}>···</span>
             </div>
           ))}
         </div>
 
-        {/* Media Gallery */}
         <div className="sec-header">
           <span className="sec-title">Media Gallery</span>
           <span className="sec-link">See All</span>
         </div>
         <div className="media-grid">
           {mediaGrid.map((m,i) => (
-            <div className={`media-cell ${m.cls}`} key={i}>
+            <div className={`media-cell ${m.cls}`} key={i} onClick={() => showToast(m.type==="vid" ? "▶️ Playing video…" : "🖼️ Opening image…")}>
               {m.type==="img"
                 ? <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                 : <svg viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
@@ -811,29 +813,88 @@ function HomePage({ onLogout }) {
         </div>
       </div>
 
-      {/* Bottom nav */}
-      <div className="bottom-nav">
-        {[
-          { id:"home",    label:"Home",    icon:<><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></> },
-          { id:"files",   label:"Files",   icon:<><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></> },
-        ].map(n => (
-          <div className="nav-item" key={n.id} onClick={() => setActiveNav(n.id)}>
-            <div className={`nav-icon-wrap ${activeNav===n.id?"active":""}`}><svg viewBox="0 0 24 24">{n.icon}</svg></div>
-            <span className={`nav-lbl ${activeNav===n.id?"active":""}`}>{n.label}</span>
+      {/* Upload Modal */}
+      {showUpload && (
+        <div className="modal-overlay" onClick={() => setShowUpload(false)}>
+          <div className="modal-sheet" onClick={e => e.stopPropagation()}>
+            <div className="modal-pill"/>
+            <p className="modal-title">Upload Files</p>
+            <div className="upload-options">
+              {[
+                { label:"Camera",     sub:"Take a photo or video", color:"teal",   icon:<><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></> },
+                { label:"Gallery",    sub:"Choose from photos",     color:"violet", icon:<><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></> },
+                { label:"Files",      sub:"Browse your storage",    color:"blue",   icon:<><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></> },
+                { label:"Cloud Link", sub:"Paste a cloud URL",       color:"rose",   icon:<><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></> },
+              ].map((o,i) => (
+                <div className="upload-opt" key={i} onClick={() => { setShowUpload(false); showToast(`⬆️ ${o.label} selected`); }}>
+                  <div className={`upload-opt-icon qa-icon ${o.color}`}><svg viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none">{o.icon}</svg></div>
+                  <span className="upload-opt-label">{o.label}</span>
+                  <span className="upload-opt-sub">{o.sub}</span>
+                </div>
+              ))}
+            </div>
           </div>
-        ))}
-
-        <div className="nav-fab">
-          <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         </div>
+      )}
+    </>
+  );
+}
 
-        {[
-          { id:"gallery", label:"Gallery", icon:<><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></> },
-          { id:"profile", label:"Profile", icon:<><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></> },
-        ].map(n => (
-          <div className="nav-item" key={n.id} onClick={() => setActiveNav(n.id)}>
-            <div className={`nav-icon-wrap ${activeNav===n.id?"active":""}`}><svg viewBox="0 0 24 24">{n.icon}</svg></div>
-            <span className={`nav-lbl ${activeNav===n.id?"active":""}`}>{n.label}</span>
+/* ── FILES BODY ── */
+function FilesBody({ showToast }) {
+  const [filter, setFilter] = useState("all");
+  const [query, setQuery]   = useState("");
+  const filters = ["all","images","videos","docs"];
+  const visible = allFiles.filter(f => (filter==="all" || f.cat===filter) && f.name.toLowerCase().includes(query.toLowerCase()));
+
+  return (
+    <div className="home-body">
+      <div className="sheet-pill"/>
+      <div className="sec-header"><span className="sec-title">All Files</span><span className="sec-link">{visible.length} items</span></div>
+      <div className="search-wrap">
+        <div className="search-bar">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input placeholder="Search files…" value={query} onChange={e => setQuery(e.target.value)}/>
+        </div>
+        <div className="sort-btn" onClick={() => showToast("⬇️ Sorted by date")}><svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="16" y2="12"/><line x1="4" y1="18" x2="12" y2="18"/></svg></div>
+      </div>
+      <div className="filter-row">
+        {filters.map(f => <span key={f} className={`filter-chip ${filter===f?"active":""}`} onClick={() => setFilter(f)}>{f.charAt(0).toUpperCase()+f.slice(1)}</span>)}
+      </div>
+      <div className="file-list">
+        {visible.length === 0
+          ? <p style={{color:"#9ca3af",textAlign:"center",padding:"28px 0",fontSize:"13px"}}>No files found</p>
+          : visible.map((f,i) => (
+            <div className="file-row" key={i} onClick={() => showToast(`📂 Opening ${f.name}`)}>
+              <div className={`file-thumb ft-${f.type}`}><FileThumb type={f.type}/></div>
+              <div className="file-info">
+                <p className="file-name">{f.name}</p>
+                <p className="file-meta">{f.meta} · {f.size}</p>
+              </div>
+              <span className="file-dots" onClick={e => { e.stopPropagation(); showToast("⚙️ Options opened"); }}>···</span>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+  );
+}
+
+/* ── GALLERY BODY ── */
+function GalleryBody({ showToast }) {
+  const all = [...mediaGrid, ...mediaGrid.map((m,i) => ({...m, cls: ["mc3","mc1","mc5","mc2","mc6","mc4"][i]}))];
+  return (
+    <div className="home-body">
+      <div className="sheet-pill"/>
+      <div className="sec-header"><span className="sec-title">Media Gallery</span><span className="sec-link">{all.length} items</span></div>
+      <div className="media-grid">
+        {all.map((m,i) => (
+          <div className={`media-cell ${m.cls}`} key={i} onClick={() => showToast(m.type==="vid" ? "▶️ Playing video…" : "🖼️ Opening image…")}>
+            {m.type==="img"
+              ? <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              : <svg viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+            }
+            {m.type==="vid" && <span className="vid-tag">▶ VID</span>}
           </div>
         ))}
       </div>
@@ -841,6 +902,133 @@ function HomePage({ onLogout }) {
   );
 }
 
+/* ── PROFILE BODY ── */
+function ProfileBody({ showToast, onLogout }) {
+  const menuItems = [
+    { icon: <><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></>, label:"Edit Profile",     sub:"Update your info",          color:"teal"   },
+    { icon: <><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></>,           label:"Privacy & Security", sub:"Password, 2FA",              color:"blue"   },
+    { icon: <><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></>,   label:"Notifications",      sub:"Manage alerts",              color:"violet" },
+    { icon: <><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></>,   label:"Storage Plan",       sub:"Upgrade to 50 GB",          color:"rose"   },
+    { icon: <><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 010 14.14M4.93 4.93a10 10 0 000 14.14"/></>, label:"Help & Support",     sub:"Get help anytime",          color:"amber"  },
+  ];
+
+  return (
+    <div className="home-page profile-page">
+      <div className="profile-header-area">
+        <div className="profile-avatar">
+          <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </div>
+        <p className="profile-name">Muhajir Payao</p>
+        <p className="profile-email">mjdev@cloudvault</p>
+      </div>
+      <div className="profile-body">
+        <div className="sheet-pill"/>
+        <div className="profile-stat-row">
+          {[["124","Files"],["12.4 GB","Used"],["62%","Full"]].map(([v,l]) => (
+            <div className="profile-stat" key={l}><p className="pstat-val">{v}</p><p className="pstat-lbl">{l}</p></div>
+          ))}
+        </div>
+        <div className="menu-list">
+          {menuItems.map((m,i) => (
+            <div className="menu-row" key={i} onClick={() => showToast(`⚙️ Opening ${m.label}…`)}>
+              <div className={`menu-row-icon qa-icon ${m.color}`}><svg viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none">{m.icon}</svg></div>
+              <div className="menu-row-info"><p className="menu-row-title">{m.label}</p><p className="menu-row-sub">{m.sub}</p></div>
+              <span className="menu-row-arrow">›</span>
+            </div>
+          ))}
+        </div>
+        <div className="logout-row"><button className="logout-btn" onClick={onLogout}>Log Out</button></div>
+      </div>
+    </div>
+  );
+}
+
+/* ── HOME PAGE ── */
+function HomePage({ onLogout }) {
+  const [nav, setNav]     = useState("home");
+  const [toast, setToast] = useState("");
+
+  const showToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(""), 2200);
+  };
+
+  const navItems = [
+    { id:"home",    label:"Home",    icon:<><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></> },
+    { id:"files",   label:"Files",   icon:<><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></> },
+  ];
+  const navItemsRight = [
+    { id:"gallery", label:"Gallery", icon:<><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></> },
+    { id:"profile", label:"Profile", icon:<><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></> },
+  ];
+
+  return (
+    <div className="home-page">
+      {/* Header — only show on non-profile pages */}
+      {nav !== "profile" && (
+        <div className="home-header">
+          <div className="home-header-row">
+            <div className="home-brand">
+              <div className="home-brand-icon"><CloudIcon/></div>
+              <span className="home-brand-name">Cloud<span>Vault</span></span>
+            </div>
+            <div className="home-notif" onClick={() => showToast("🔔 No new notifications")}>
+              <BellIcon/>
+              <div className="notif-dot"/>
+            </div>
+          </div>
+          <div className="home-greeting">
+            <p className="home-greeting-sub">Good afternoon 👋</p>
+            <h2 className="home-greeting-name">Muhajir <span>Payao</span></h2>
+            <p className="home-greeting-desc">Your files are safe & organized</p>
+          </div>
+          <div className="storage-card">
+            <div className="storage-top">
+              <span className="storage-lbl">Storage Used</span>
+              <span className="storage-amt">12.4 GB / 20 GB</span>
+            </div>
+            <div className="storage-track"><div className="storage-fill"/></div>
+            <div className="storage-types">
+              {[["#7FFFD4","Photos 4.2 GB"],["#C4B5FD","Videos 6.8 GB"],["#FDE68A","Docs 1.4 GB"]].map(([c,l]) => (
+                <div className="storage-type-item" key={l}><div className="s-dot" style={{background:c}}/><span>{l}</span></div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Page content */}
+      {nav === "home"    && <HomeBody    showToast={showToast}/>}
+      {nav === "files"   && <FilesBody   showToast={showToast}/>}
+      {nav === "gallery" && <GalleryBody showToast={showToast}/>}
+      {nav === "profile" && <ProfileBody showToast={showToast} onLogout={onLogout}/>}
+
+      {/* Toast */}
+      {toast && <div className="toast">{toast}</div>}
+
+      {/* Bottom Nav */}
+      <div className="bottom-nav">
+        {navItems.map(n => (
+          <div className="nav-item" key={n.id} onClick={() => setNav(n.id)}>
+            <div className={`nav-icon-wrap ${nav===n.id?"active":""}`}><svg viewBox="0 0 24 24">{n.icon}</svg></div>
+            <span className={`nav-lbl ${nav===n.id?"active":""}`}>{n.label}</span>
+          </div>
+        ))}
+        <div className="nav-fab" onClick={() => showToast("⬆️ Upload started")}>
+          <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </div>
+        {navItemsRight.map(n => (
+          <div className="nav-item" key={n.id} onClick={() => setNav(n.id)}>
+            <div className={`nav-icon-wrap ${nav===n.id?"active":""}`}><svg viewBox="0 0 24 24">{n.icon}</svg></div>
+            <span className={`nav-lbl ${nav===n.id?"active":""}`}>{n.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── ROOT ── */
 export default function App() {
   const [page, setPage] = useState("login");
   return (
@@ -848,8 +1036,8 @@ export default function App() {
       <style>{styles}</style>
       <div className="cv-app">
         {page === "login"
-          ? <LoginPage onLogin={() => setPage("home")} />
-          : <HomePage onLogout={() => setPage("login")} />
+          ? <LoginPage onLogin={() => setPage("home")}/>
+          : <HomePage  onLogout={() => setPage("login")}/>
         }
       </div>
     </>
