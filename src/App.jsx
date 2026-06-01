@@ -1,16 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-/* ─────────────────────────────────────────
-   SUPABASE CLIENT
-───────────────────────────────────────── */
-const SUPABASE_URL    = "https://oynuqcbqcxfoalmlxiwx.supabase.co";
-const SUPABASE_ANON   = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im95bnVxY2JxY3hmb2FsbWx4aXd4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMzE0ODgsImV4cCI6MjA5NTkwNzQ4OH0.04xWAzu6W_5inGAppDvRlDqrPoOOqbfSsAOdHyuAUEc";
-const supabase        = createClient(SUPABASE_URL, SUPABASE_ANON);
+const SUPABASE_URL  = "https://oynuqcbqcxfoalmlxiwx.supabase.co";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im95bnVxY2JxY3hmb2FsbWx4aXd4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMzE0ODgsImV4cCI6MjA5NTkwNzQ4OH0.04xWAzu6W_5inGAppDvRlDqrPoOOqbfSsAOdHyuAUEc";
+const supabase      = createClient(SUPABASE_URL, SUPABASE_ANON);
 
-/* ─────────────────────────────────────────
-   HELPERS
-───────────────────────────────────────── */
 function getBucket(file) {
   const m = file.type;
   if (m.startsWith("image/")) return "images";
@@ -35,9 +29,7 @@ function formatSize(bytes) {
   if (bytes < 1024 ** 3) return (bytes / 1024 ** 2).toFixed(1) + " MB";
   return (bytes / 1024 ** 3).toFixed(2) + " GB";
 }
-function formatGB(bytes) {
-  return (bytes / 1024 ** 3).toFixed(2) + " GB";
-}
+function formatGB(bytes) { return (bytes / 1024 ** 3).toFixed(2) + " GB"; }
 function timeAgo(ts) {
   if (!ts) return "";
   const diff = Date.now() - new Date(ts).getTime();
@@ -49,58 +41,37 @@ function timeAgo(ts) {
   return Math.floor(h / 24) + "d ago";
 }
 
-/* ─────────────────────────────────────────
-   STORAGE FUNCTIONS
-───────────────────────────────────────── */
-async function uploadFile(file, userId, onProgress) {
-  const bucket  = getBucket(file);
-  const ext     = file.name.split(".").pop();
-  const path    = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-
-  const { error: upErr } = await supabase.storage
-    .from(bucket)
-    .upload(path, file, { cacheControl: "3600", upsert: false });
+/* ── STORAGE ── */
+async function uploadFile(file, userId) {
+  const bucket = getBucket(file);
+  const ext    = file.name.split(".").pop();
+  const path   = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+  const { error: upErr } = await supabase.storage.from(bucket).upload(path, file, { cacheControl: "3600", upsert: false });
   if (upErr) throw upErr;
-
   const { error: dbErr } = await supabase.from("files").insert({
-    user_id: userId,
-    name: file.name,
-    original_name: file.name,
-    bucket,
-    storage_path: path,
-    size: file.size,
-    mime_type: file.type,
-    category: getCategory(file),
+    user_id: userId, name: file.name, original_name: file.name,
+    bucket, storage_path: path, size: file.size, mime_type: file.type, category: getCategory(file),
   });
   if (dbErr) throw dbErr;
 }
-
 async function getFileUrl(record) {
   if (record.bucket === "images") {
     const { data } = supabase.storage.from("images").getPublicUrl(record.storage_path);
     return data.publicUrl;
   }
-  const { data, error } = await supabase.storage
-    .from(record.bucket)
-    .createSignedUrl(record.storage_path, 3600);
+  const { data, error } = await supabase.storage.from(record.bucket).createSignedUrl(record.storage_path, 3600);
   if (error) throw error;
   return data.signedUrl;
 }
-
 async function downloadFile(record) {
   const url = await getFileUrl(record);
-  const a   = document.createElement("a");
-  a.href     = url;
-  a.download = record.original_name;
-  a.target   = "_blank";
-  a.click();
+  const a = document.createElement("a");
+  a.href = url; a.download = record.original_name; a.target = "_blank"; a.click();
 }
-
 async function deleteFile(record) {
   await supabase.storage.from(record.bucket).remove([record.storage_path]);
   await supabase.from("files").delete().eq("id", record.id);
 }
-
 async function fetchFiles(userId, category) {
   let q = supabase.from("files").select("*").eq("user_id", userId).order("created_at", { ascending: false });
   if (category) q = q.eq("category", category);
@@ -108,15 +79,12 @@ async function fetchFiles(userId, category) {
   if (error) throw error;
   return data || [];
 }
-
 async function fetchProfile(userId) {
   const { data } = await supabase.from("profiles").select("*").eq("id", userId).single();
   return data;
 }
 
-/* ─────────────────────────────────────────
-   STYLES
-───────────────────────────────────────── */
+/* ── STYLES ── */
 const styles = `
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=DM+Sans:wght@300;400;500;600&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -129,7 +97,7 @@ html,body{height:100%;overflow-x:hidden}
 }
 .cv-app{font-family:var(--dm);min-height:100%;background:var(--bg);overflow-x:hidden;max-width:480px;margin:0 auto;position:relative}
 
-/* ── AUTH PAGE ── */
+/* AUTH */
 .auth-page{min-height:100svh;display:flex;flex-direction:column;background:var(--white)}
 .auth-hero{background:linear-gradient(160deg,#00D4B8 0%,#00B5C8 50%,#0094B0 100%);flex:0 0 auto;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;padding:clamp(28px,8vw,52px) clamp(20px,6vw,40px) clamp(36px,10vw,60px);min-height:clamp(240px,42svh,340px)}
 .auth-hero::before{content:'';position:absolute;width:clamp(180px,65vw,320px);height:clamp(180px,65vw,320px);border-radius:50%;border:2px solid rgba(255,255,255,0.13);top:-20%;right:-15%}
@@ -166,7 +134,7 @@ html,body{height:100%;overflow-x:hidden}
 .auth-err{background:#fff1f2;border:1.5px solid #fecdd3;color:#e11d48;border-radius:12px;padding:clamp(10px,3vw,12px) clamp(12px,3.5vw,14px);font-size:clamp(11px,3vw,13px);font-weight:500;margin-bottom:14px;text-align:center}
 .auth-ok{background:#f0fdf4;border:1.5px solid #a7f3d0;color:#059669;border-radius:12px;padding:clamp(10px,3vw,12px) clamp(12px,3.5vw,14px);font-size:clamp(11px,3vw,13px);font-weight:500;margin-bottom:14px;text-align:center}
 
-/* ── HOME ── */
+/* HOME */
 .home-page{min-height:100svh;display:flex;flex-direction:column;background:var(--bg)}
 .home-header{background:linear-gradient(150deg,#00D4B8 0%,#00B5C8 55%,#0094B0 100%);padding:clamp(36px,10vw,52px) clamp(18px,5vw,28px) clamp(22px,6vw,32px);position:relative;overflow:hidden}
 .home-header::before{content:'';position:absolute;width:clamp(200px,70vw,320px);height:clamp(200px,70vw,320px);border-radius:50%;border:2px solid rgba(255,255,255,0.1);top:-25%;right:-15%}
@@ -196,14 +164,14 @@ html,body{height:100%;overflow-x:hidden}
 .s-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
 .stor-type span{font-size:clamp(10px,2.8vw,12px);color:rgba(255,255,255,0.72)}
 
-/* ── BODY ── */
+/* BODY */
 .home-body{background:var(--white);border-radius:clamp(20px,6vw,28px) clamp(20px,6vw,28px) 0 0;margin-top:clamp(-14px,-4vw,-18px);padding:clamp(18px,5vw,28px) clamp(16px,5vw,24px) clamp(90px,22vw,110px);flex:1;box-shadow:0 -6px 24px rgba(0,0,0,0.05);overflow-x:hidden}
 .sheet-pill{width:34px;height:4px;background:var(--border);border-radius:99px;margin:0 auto clamp(18px,5vw,26px)}
 .sec-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:clamp(12px,3.5vw,16px)}
 .sec-title{font-family:var(--nunito);font-size:clamp(14px,4vw,17px);font-weight:800;color:var(--text)}
 .sec-link{font-size:clamp(11px,3vw,13px);color:var(--teal2);font-weight:600;cursor:pointer}
 
-/* ── QUICK ACTIONS ── */
+/* QUICK ACTIONS */
 .qa-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:clamp(8px,2.5vw,14px);margin-bottom:clamp(22px,6vw,32px)}
 .qa-btn{display:flex;flex-direction:column;align-items:center;gap:clamp(5px,1.5vw,8px);cursor:pointer;transition:transform 0.15s}
 .qa-btn:active{transform:scale(0.93)}
@@ -216,7 +184,7 @@ html,body{height:100%;overflow-x:hidden}
 .qa-icon.amber{background:linear-gradient(135deg,#FEF9C3,#FEF08A)}.qa-icon.amber svg{stroke:#A16207}
 .qa-label{font-size:clamp(9px,2.6vw,11px);font-weight:600;color:#374151;text-align:center;line-height:1.2}
 
-/* ── FILE LIST ── */
+/* FILE LIST */
 .file-list{margin-bottom:clamp(22px,6vw,30px)}
 .file-row{display:flex;align-items:center;gap:clamp(10px,3vw,14px);padding:clamp(10px,3vw,13px) 0;border-bottom:1px solid #f3f4f6;cursor:pointer;transition:background 0.15s;border-radius:8px}
 .file-thumb{width:clamp(40px,12vw,50px);height:clamp(40px,12vw,50px);border-radius:clamp(10px,3vw,14px);display:flex;align-items:center;justify-content:center;flex-shrink:0}
@@ -231,7 +199,7 @@ html,body{height:100%;overflow-x:hidden}
 .file-dots{padding:4px 6px;cursor:pointer;color:#9ca3af;font-size:16px;letter-spacing:1px;flex-shrink:0;border-radius:8px;transition:background 0.15s}
 .file-dots:hover{background:#f3f4f6}
 
-/* ── MEDIA GRID ── */
+/* MEDIA GRID */
 .media-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(6px,2vw,8px)}
 .media-cell{aspect-ratio:1;border-radius:clamp(10px,3vw,14px);overflow:hidden;cursor:pointer;position:relative;display:flex;align-items:center;justify-content:center;transition:transform 0.15s}
 .media-cell:active{transform:scale(0.96)}
@@ -243,9 +211,8 @@ html,body{height:100%;overflow-x:hidden}
 .mc4{background:linear-gradient(135deg,#BAE6FD,#7DD3FC)}.mc4 svg{stroke:#075985}
 .mc5{background:linear-gradient(135deg,#FECDD3,#FDA4AF)}.mc5 svg{stroke:#881337}
 .mc6{background:linear-gradient(135deg,#D9F99D,#BEF264)}.mc6 svg{stroke:#3F6212}
-.vid-tag{position:absolute;bottom:6px;right:6px;background:rgba(0,0,0,0.45);color:#fff;font-size:clamp(8px,2.2vw,10px);font-weight:700;padding:2px clamp(5px,1.5vw,7px);border-radius:99px;backdrop-filter:blur(4px)}
 
-/* ── BOTTOM NAV ── */
+/* BOTTOM NAV */
 .bottom-nav{position:fixed;bottom:0;left:0;right:0;background:var(--white);border-top:1px solid #f0f1f3;display:flex;justify-content:space-around;align-items:center;padding:clamp(8px,2.5vw,12px) 0 clamp(14px,5vw,22px);box-shadow:0 -4px 24px rgba(0,0,0,0.07);z-index:100;max-width:480px;margin:0 auto}
 .nav-item{display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer}
 .nav-icon-wrap{width:clamp(34px,9.5vw,42px);height:clamp(34px,9.5vw,42px);border-radius:clamp(10px,3vw,14px);display:flex;align-items:center;justify-content:center;transition:background 0.2s}
@@ -258,7 +225,7 @@ html,body{height:100%;overflow-x:hidden}
 .nav-fab:active{transform:scale(0.94)}
 .nav-fab svg{width:clamp(20px,5.5vw,24px);height:clamp(20px,5.5vw,24px);stroke:#fff;fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
 
-/* ── MODALS ── */
+/* MODALS */
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:200;display:flex;align-items:flex-end;backdrop-filter:blur(3px);animation:fadeIn 0.2s ease}
 .sheet{background:var(--white);border-radius:clamp(20px,6vw,28px) clamp(20px,6vw,28px) 0 0;padding:clamp(20px,6vw,28px) clamp(18px,5vw,26px) clamp(28px,8vw,40px);width:100%;animation:slideUp 0.25s ease;max-height:90svh;overflow-y:auto}
 @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
@@ -266,7 +233,7 @@ html,body{height:100%;overflow-x:hidden}
 .sheet-handle{width:34px;height:4px;background:var(--border);border-radius:99px;margin:0 auto clamp(16px,4.5vw,22px)}
 .sheet-title{font-family:var(--nunito);font-size:clamp(16px,4.5vw,20px);font-weight:800;color:var(--text);margin-bottom:clamp(14px,4vw,20px)}
 
-/* ── UPLOAD MODAL ── */
+/* UPLOAD */
 .upload-opts{display:grid;grid-template-columns:1fr 1fr;gap:clamp(10px,3vw,14px)}
 .upload-opt{display:flex;flex-direction:column;align-items:center;gap:clamp(8px,2.5vw,11px);padding:clamp(14px,4vw,20px) clamp(10px,3vw,16px);border-radius:clamp(14px,4vw,18px);cursor:pointer;transition:transform 0.15s,box-shadow 0.15s;border:1.5px solid var(--border)}
 .upload-opt:active{transform:scale(0.96)}
@@ -275,13 +242,23 @@ html,body{height:100%;overflow-x:hidden}
 .upload-opt-label{font-size:clamp(12px,3.2vw,14px);font-weight:600;color:var(--text)}
 .upload-opt-sub{font-size:clamp(10px,2.8vw,11px);color:var(--muted);text-align:center}
 
-/* ── PROGRESS BAR ── */
+/* MULTI-UPLOAD QUEUE */
+.queue-list{display:flex;flex-direction:column;gap:8px;margin-bottom:16px}
+.queue-item{display:flex;align-items:center;gap:10px;background:#f9fafb;border-radius:12px;padding:10px 12px}
+.queue-item-name{flex:1;font-size:clamp(11px,3vw,13px);font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.queue-item-size{font-size:11px;color:var(--muted);flex-shrink:0}
+.queue-item-status{flex-shrink:0;font-size:16px}
+.queue-remove{flex-shrink:0;width:22px;height:22px;border-radius:50%;background:#fee2e2;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#e11d48;font-size:14px;font-weight:700;line-height:1}
+.upload-all-btn{width:100%;padding:clamp(13px,3.8vw,16px);background:linear-gradient(135deg,var(--teal) 0%,var(--teal3) 100%);border:none;border-radius:99px;font-family:var(--nunito);font-size:clamp(14px,4vw,16px);font-weight:700;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 6px 22px rgba(0,180,160,0.35);margin-top:12px}
+.upload-all-btn:disabled{opacity:0.6;cursor:not-allowed}
+
+/* PROGRESS */
 .prog-bar-wrap{background:#f0fdf4;border:1.5px solid #a7f3d0;border-radius:clamp(12px,3.5vw,16px);padding:clamp(12px,3.5vw,16px) clamp(14px,4vw,18px);margin-bottom:clamp(14px,4vw,18px)}
 .prog-bar-label{font-size:clamp(12px,3.2vw,13px);font-weight:600;color:#059669;margin-bottom:8px;display:flex;justify-content:space-between}
 .prog-bar-track{height:7px;background:#dcfce7;border-radius:99px;overflow:hidden}
 .prog-bar-fill{height:100%;background:linear-gradient(90deg,var(--teal),var(--teal3));border-radius:99px;transition:width 0.3s ease}
 
-/* ── FILE VIEWER MODAL ── */
+/* FILE VIEWER */
 .viewer-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:300;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:clamp(16px,5vw,28px);animation:fadeIn 0.2s ease}
 .viewer-header{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;justify-content:space-between;padding:clamp(14px,4vw,20px) clamp(16px,5vw,24px);background:linear-gradient(to bottom,rgba(0,0,0,0.6),transparent)}
 .viewer-title{color:#fff;font-family:var(--nunito);font-size:clamp(13px,3.8vw,16px);font-weight:700;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-right:12px}
@@ -299,7 +276,7 @@ html,body{height:100%;overflow-x:hidden}
 .viewer-btn.primary{background:linear-gradient(135deg,var(--teal),var(--teal3));color:#fff;box-shadow:0 4px 16px rgba(0,180,160,0.4)}
 .viewer-btn.secondary{background:rgba(255,255,255,0.15);color:#fff;border:1.5px solid rgba(255,255,255,0.3);backdrop-filter:blur(6px)}
 
-/* ── FILE OPTIONS SHEET ── */
+/* FILE OPTIONS */
 .opt-list{display:flex;flex-direction:column;gap:4px}
 .opt-row{display:flex;align-items:center;gap:14px;padding:clamp(12px,3.5vw,15px) clamp(8px,2.5vw,12px);border-radius:clamp(12px,3.5vw,16px);cursor:pointer;transition:background 0.15s}
 .opt-row:hover{background:#f9fafb}
@@ -310,7 +287,7 @@ html,body{height:100%;overflow-x:hidden}
 .opt-sub{font-size:clamp(10px,2.8vw,12px);color:var(--muted);margin-top:1px}
 .opt-row.danger .opt-title{color:#e11d48}
 
-/* ── FILTERS / SEARCH ── */
+/* SEARCH / FILTER */
 .filter-row{display:flex;gap:clamp(8px,2.5vw,12px);overflow-x:auto;padding-bottom:4px;margin-bottom:clamp(14px,4vw,20px);scrollbar-width:none}
 .filter-row::-webkit-scrollbar{display:none}
 .filter-chip{flex-shrink:0;padding:clamp(6px,2vw,8px) clamp(12px,3.5vw,16px);border-radius:99px;font-size:clamp(11px,3vw,13px);font-weight:600;cursor:pointer;transition:all 0.15s;border:1.5px solid var(--border);background:var(--white);color:var(--muted)}
@@ -323,7 +300,7 @@ html,body{height:100%;overflow-x:hidden}
 .sort-btn{width:clamp(38px,10.5vw,46px);height:clamp(38px,10.5vw,46px);background:#f5f6f8;border-radius:clamp(11px,3vw,14px);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;border:1.5px solid var(--border)}
 .sort-btn svg{width:55%;height:55%;stroke:#6b7280;fill:none;stroke-width:2;stroke-linecap:round}
 
-/* ── PROFILE ── */
+/* PROFILE */
 .prof-page{padding-bottom:clamp(90px,22vw,110px)}
 .prof-hdr{background:linear-gradient(150deg,#00D4B8 0%,#00B5C8 55%,#0094B0 100%);padding:clamp(36px,10vw,52px) clamp(18px,5vw,28px) clamp(30px,8vw,44px);text-align:center;position:relative}
 .prof-avatar{width:clamp(64px,18vw,82px);height:clamp(64px,18vw,82px);background:rgba(255,255,255,0.22);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto clamp(10px,3vw,14px);border:2.5px solid rgba(255,255,255,0.5)}
@@ -348,17 +325,17 @@ html,body{height:100%;overflow-x:hidden}
 .logout-btn{width:100%;padding:clamp(13px,3.8vw,15px);background:#fff1f2;border:1.5px solid #fecdd3;border-radius:99px;font-family:var(--nunito);font-size:clamp(13px,3.8vw,15px);font-weight:700;color:#e11d48;cursor:pointer;transition:opacity 0.2s,transform 0.12s}
 .logout-btn:active{transform:scale(0.98)}
 
-/* ── TOAST ── */
+/* TOAST */
 .toast{position:fixed;bottom:clamp(76px,18vw,90px);left:50%;transform:translateX(-50%);background:#111827;color:#fff;font-size:clamp(12px,3.2vw,13px);font-weight:600;padding:clamp(9px,2.5vw,11px) clamp(16px,4.5vw,22px);border-radius:99px;box-shadow:0 6px 20px rgba(0,0,0,0.25);z-index:999;white-space:nowrap;animation:fadeIn 0.2s ease;max-width:90vw;text-overflow:ellipsis;overflow:hidden}
 
-/* ── EMPTY STATE ── */
+/* EMPTY */
 .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:clamp(28px,8vw,44px) 16px;text-align:center}
 .empty-icon{width:clamp(56px,16vw,72px);height:clamp(56px,16vw,72px);background:#f9fafb;border-radius:clamp(16px,5vw,22px);display:flex;align-items:center;justify-content:center;margin-bottom:14px}
 .empty-icon svg{width:55%;height:55%;stroke:#d1d5db;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
 .empty h3{font-family:var(--nunito);font-size:clamp(15px,4.5vw,18px);font-weight:800;color:var(--text);margin-bottom:6px}
 .empty p{font-size:clamp(12px,3.2vw,13px);color:var(--muted);line-height:1.5}
 
-/* ── LOADER ── */
+/* LOADER */
 .spin{width:20px;height:20px;border:2.5px solid rgba(255,255,255,0.4);border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite;flex-shrink:0}
 .spin-teal{border-color:rgba(0,201,167,0.2);border-top-color:var(--teal)}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -367,9 +344,7 @@ html,body{height:100%;overflow-x:hidden}
 .page-loader-inner span{font-family:var(--nunito);font-size:15px;font-weight:700;color:var(--teal2)}
 `;
 
-/* ─────────────────────────────────────────
-   ICON HELPERS
-───────────────────────────────────────── */
+/* ── ICONS ── */
 const CloudIcon = () => (
   <svg viewBox="0 0 24 24"><path d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"/></svg>
 );
@@ -379,19 +354,17 @@ const FileThumb = ({ type }) => {
   return <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>;
 };
 
-/* ─────────────────────────────────────────
-   AUTH PAGE (Login + Sign Up tabs)
-───────────────────────────────────────── */
+/* ── AUTH ── */
 function AuthPage({ onAuth }) {
-  const [tab,  setTab]  = useState("login");   // "login" | "signup"
+  const [tab, setTab]     = useState("login");
   const [email, setEmail] = useState("");
-  const [pass,  setPass]  = useState("");
-  const [name,  setName]  = useState("");
-  const [show,  setShow]  = useState(false);
-  const [rem,   setRem]   = useState(false);
-  const [busy,  setBusy]  = useState(false);
-  const [err,   setErr]   = useState("");
-  const [ok,    setOk]    = useState("");
+  const [pass, setPass]   = useState("");
+  const [name, setName]   = useState("");
+  const [show, setShow]   = useState(false);
+  const [rem, setRem]     = useState(false);
+  const [busy, setBusy]   = useState(false);
+  const [err, setErr]     = useState("");
+  const [ok, setOk]       = useState("");
 
   const handle = async () => {
     setErr(""); setOk("");
@@ -406,22 +379,14 @@ function AuthPage({ onAuth }) {
         onAuth(data.user);
       } else {
         const { data, error } = await supabase.auth.signUp({
-          email, password: pass,
-          options: { data: { full_name: name } }
+          email, password: pass, options: { data: { full_name: name } }
         });
         if (error) throw error;
-        if (data.user && data.session) {
-          onAuth(data.user);
-        } else {
-          setOk("Account created! Check your email to confirm, then log in.");
-          setTab("login");
-        }
+        if (data.user && data.session) { onAuth(data.user); }
+        else { setOk("Account created! Check your email to confirm, then log in."); setTab("login"); }
       }
-    } catch (e) {
-      setErr(e.message || "Something went wrong.");
-    } finally {
-      setBusy(false);
-    }
+    } catch (e) { setErr(e.message || "Something went wrong."); }
+    finally { setBusy(false); }
   };
 
   return (
@@ -433,103 +398,62 @@ function AuthPage({ onAuth }) {
             <rect x="45" y="45" width="120" height="150" rx="13" fill="rgba(255,255,255,0.22)" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5"/>
             <rect x="60" y="66" width="46" height="5" rx="2.5" fill="rgba(255,255,255,0.6)"/>
             <rect x="60" y="78" width="74" height="5" rx="2.5" fill="rgba(255,255,255,0.4)"/>
-            <rect x="60" y="90" width="60" height="5" rx="2.5" fill="rgba(255,255,255,0.3)"/>
             <rect x="60" y="108" width="92" height="50" rx="7" fill="rgba(255,255,255,0.12)"/>
             <rect x="70" y="138" width="13" height="14" rx="3" fill="rgba(127,255,212,0.7)"/>
             <rect x="89" y="126" width="13" height="26" rx="3" fill="rgba(127,255,212,0.85)"/>
             <rect x="108" y="133" width="13" height="19" rx="3" fill="rgba(127,255,212,0.65)"/>
             <rect x="127" y="120" width="13" height="32" rx="3" fill="#7FFFD4"/>
-            <rect x="60" y="170" width="13" height="13" rx="3.5" fill="rgba(255,255,255,0.25)" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5"/>
-            <polyline points="63,176 66,179 71,173" stroke="#7FFFD4" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-            <rect x="79" y="173" width="46" height="5" rx="2.5" fill="rgba(255,255,255,0.4)"/>
-            <rect x="60" y="188" width="13" height="13" rx="3.5" fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.3)" strokeWidth="1.5"/>
-            <rect x="79" y="191" width="36" height="5" rx="2.5" fill="rgba(255,255,255,0.25)"/>
             <circle cx="24" cy="108" r="11" fill="rgba(255,255,255,0.28)"/>
             <circle cx="24" cy="102" r="4.5" fill="rgba(255,255,255,0.6)"/>
             <path d="M15 118 Q24 111 33 118" fill="rgba(255,255,255,0.4)"/>
-            <rect x="150" y="56" width="54" height="40" rx="9" fill="rgba(255,255,255,0.18)" stroke="rgba(255,255,255,0.35)" strokeWidth="1.2"/>
-            <rect x="158" y="67" width="28" height="5" rx="2.5" fill="rgba(255,255,255,0.5)"/>
-            <rect x="158" y="76" width="37" height="5" rx="2.5" fill="rgba(255,255,255,0.3)"/>
-            <rect x="158" y="85" width="22" height="5" rx="2.5" fill="rgba(255,255,255,0.2)"/>
-            <circle cx="42" cy="60" r="3.5" fill="rgba(255,255,212,0.4)"/>
-            <circle cx="198" cy="45" r="3" fill="rgba(127,255,212,0.5)"/>
-            <circle cx="222" cy="148" r="4.5" fill="rgba(255,255,255,0.2)"/>
           </svg>
         </div>
       </div>
-
       <div className="auth-card">
         <div className="auth-brand">
           <div className="auth-brand-icon"><CloudIcon/></div>
           <span className="auth-brand-name">Cloud<span>Vault</span></span>
         </div>
-        <h2 className="auth-headline">
-          {tab === "login" ? "Welcome Back 👋" : "Create Your Account"}
-        </h2>
-        <p className="auth-sub">
-          {tab === "login"
-            ? "Sign in to access your files and storage."
-            : "Join CloudVault and keep your files safe."}
-        </p>
-
+        <h2 className="auth-headline">{tab === "login" ? "Welcome Back 👋" : "Create Your Account"}</h2>
+        <p className="auth-sub">{tab === "login" ? "Sign in to access your files and storage." : "Join CloudVault and keep your files safe."}</p>
         <div className="auth-tabs">
           <div className={`auth-tab ${tab==="login"?"active":""}`} onClick={() => { setTab("login"); setErr(""); setOk(""); }}>Log In</div>
           <div className={`auth-tab ${tab==="signup"?"active":""}`} onClick={() => { setTab("signup"); setErr(""); setOk(""); }}>Sign Up</div>
         </div>
-
         {err && <div className="auth-err">{err}</div>}
         {ok  && <div className="auth-ok">{ok}</div>}
-
         {tab === "signup" && (
           <div className="cv-field">
             <label>Full Name</label>
             <div className="cv-input-wrap">
-              <svg className="fi" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" fill="none" stroke="#b0b5be" strokeWidth="1.8">
-                <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/>
-              </svg>
-              <input className="cv-input" placeholder="Muhajir Payao" value={name} onChange={e => setName(e.target.value)}/>
+              <svg className="fi" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" fill="none" stroke="#b0b5be" strokeWidth="1.8"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              <input className="cv-input" placeholder="Your Name" value={name} onChange={e => setName(e.target.value)}/>
             </div>
           </div>
         )}
-
         <div className="cv-field">
           <label>Email Address</label>
           <div className="cv-input-wrap">
-            <svg className="fi" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" fill="none" stroke="#b0b5be" strokeWidth="1.8">
-              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>
-            </svg>
-            <input className="cv-input" type="email" placeholder="you@cloudvault.app" value={email} onChange={e => setEmail(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && handle()}/>
+            <svg className="fi" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" fill="none" stroke="#b0b5be" strokeWidth="1.8"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            <input className="cv-input" type="email" placeholder="you@email.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key==="Enter" && handle()}/>
           </div>
         </div>
-
         <div className="cv-field">
           <label>Password</label>
           <div className="cv-input-wrap">
-            <svg className="fi" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" fill="none" stroke="#b0b5be" strokeWidth="1.8">
-              <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
-            </svg>
-            <input className="cv-input" type={show?"text":"password"} placeholder="Min. 6 characters" value={pass}
-              onChange={e => setPass(e.target.value)} onKeyDown={e => e.key === "Enter" && handle()}/>
+            <svg className="fi" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" fill="none" stroke="#b0b5be" strokeWidth="1.8"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+            <input className="cv-input" type={show?"text":"password"} placeholder="Min. 6 characters" value={pass} onChange={e => setPass(e.target.value)} onKeyDown={e => e.key==="Enter" && handle()}/>
             <svg className="cv-eye" viewBox="0 0 24 24" onClick={() => setShow(!show)} strokeLinecap="round" strokeLinejoin="round" fill="none" stroke="#b0b5be" strokeWidth="1.8">
-              {show
-                ? <><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></>
-                : <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>
-              }
+              {show ? <><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></> : <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>}
             </svg>
           </div>
         </div>
-
         {tab === "login" && (
           <div className="cv-row">
-            <label className="cv-remember">
-              <input type="checkbox" checked={rem} onChange={e => setRem(e.target.checked)}/>
-              <span>Remember Me</span>
-            </label>
+            <label className="cv-remember"><input type="checkbox" checked={rem} onChange={e => setRem(e.target.checked)}/><span>Remember Me</span></label>
             <span className="cv-forgot">Forgot Password?</span>
           </div>
         )}
-
         <button className="cv-btn" onClick={handle} disabled={busy}>
           {busy ? <><span className="spin"/>{tab==="login"?"Signing in…":"Creating account…"}</> : (tab==="login"?"Get Started →":"Create Account →")}
         </button>
@@ -538,68 +462,48 @@ function AuthPage({ onAuth }) {
   );
 }
 
-/* ─────────────────────────────────────────
-   FILE VIEWER MODAL
-───────────────────────────────────────── */
+/* ── FILE VIEWER ── */
 function FileViewer({ record, onClose, onDownload }) {
-  const [url, setUrl]     = useState(null);
-  const [busy, setBusy]   = useState(true);
-  const [err, setErr]     = useState("");
-
-  useEffect(() => {
-    getFileUrl(record)
-      .then(u => setUrl(u))
-      .catch(e => setErr(e.message))
-      .finally(() => setBusy(false));
-  }, [record]);
-
+  const [url, setUrl]   = useState(null);
+  const [busy, setBusy] = useState(true);
+  const [err, setErr]   = useState("");
+  useEffect(() => { getFileUrl(record).then(u => setUrl(u)).catch(e => setErr(e.message)).finally(() => setBusy(false)); }, [record]);
   const type = getFileType(record.category);
-
   return (
     <div className="viewer-overlay" onClick={onClose}>
       <div className="viewer-header" onClick={e => e.stopPropagation()}>
         <span className="viewer-title">{record.original_name}</span>
-        <button className="viewer-close" onClick={onClose}>
-          <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
+        <button className="viewer-close" onClick={onClose}><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
-
       <div onClick={e => e.stopPropagation()} style={{maxWidth:"100%",maxHeight:"70svh",display:"flex",alignItems:"center",justifyContent:"center"}}>
         {busy && <div className="spin" style={{width:36,height:36,borderWidth:3}}/>}
         {err  && <p style={{color:"#fca5a5",fontSize:13,textAlign:"center"}}>{err}</p>}
         {!busy && !err && url && (
           <>
-            {type === "img" && <img src={url} alt={record.original_name} className="viewer-img"/>}
-            {type === "vid" && <video src={url} className="viewer-video" controls autoPlay playsInline/>}
-            {type === "doc" && (
+            {type==="img" && <img src={url} alt={record.original_name} className="viewer-img"/>}
+            {type==="vid" && <video src={url} className="viewer-video" controls autoPlay playsInline/>}
+            {type==="doc" && (
               <div className="viewer-doc">
-                <div className="viewer-doc-icon">
-                  <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                </div>
+                <div className="viewer-doc-icon"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
                 <p className="viewer-doc-name">{record.original_name}</p>
                 <p className="viewer-doc-size">{formatSize(record.size)}</p>
-                <button className="cv-btn" onClick={() => window.open(url, "_blank")} style={{marginBottom:0}}>Open in Browser</button>
+                <button className="cv-btn" onClick={() => window.open(url,"_blank")} style={{marginBottom:0}}>Open in Browser</button>
               </div>
             )}
           </>
         )}
       </div>
-
       {!busy && !err && (
         <div className="viewer-footer" onClick={e => e.stopPropagation()}>
           <button className="viewer-btn secondary" onClick={onClose}>Close</button>
-          <button className="viewer-btn primary" onClick={() => { onDownload(record); onClose(); }}>
-            ↓ Download
-          </button>
+          <button className="viewer-btn primary" onClick={() => { onDownload(record); onClose(); }}>↓ Download</button>
         </div>
       )}
     </div>
   );
 }
 
-/* ─────────────────────────────────────────
-   FILE OPTIONS SHEET
-───────────────────────────────────────── */
+/* ── FILE OPTIONS ── */
 function FileOptions({ record, onClose, onView, onDownload, onDelete }) {
   return (
     <div className="overlay" onClick={onClose}>
@@ -609,25 +513,14 @@ function FileOptions({ record, onClose, onView, onDownload, onDelete }) {
         <p style={{fontSize:"clamp(10px,2.8vw,12px)",color:"var(--muted)",marginBottom:16}}>{formatSize(record.size)} · {timeAgo(record.created_at)}</p>
         <div className="opt-list">
           {[
-            { label:"View File", sub:"Preview in app", color:"teal", icon:<><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>, fn: onView },
-            { label:"Download",  sub:"Save to device",  color:"blue", icon:<><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></>, fn: () => { onDownload(record); onClose(); } },
-            { label:"Share Link",sub:"Copy shareable URL",color:"violet",icon:<><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></>, fn: async () => {
-              try {
-                const url = await getFileUrl(record);
-                await navigator.clipboard.writeText(url);
-                onClose();
-              } catch { onClose(); }
-            }},
-            { label:"Delete File",sub:"Remove permanently",color:"rose",icon:<><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></>, fn: onDelete, danger: true },
+            { label:"View File",   sub:"Preview in app",      color:"teal",   icon:<><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>,  fn: onView },
+            { label:"Download",    sub:"Save to device",       color:"blue",   icon:<><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></>, fn: () => { onDownload(record); onClose(); } },
+            { label:"Share Link",  sub:"Copy shareable URL",   color:"violet", icon:<><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></>, fn: async () => { try { const url = await getFileUrl(record); await navigator.clipboard.writeText(url); } catch {} onClose(); } },
+            { label:"Delete File", sub:"Remove permanently",   color:"rose",   icon:<><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></>, fn: onDelete, danger: true },
           ].map((o,i) => (
             <div className={`opt-row ${o.danger?"danger":""}`} key={i} onClick={o.fn}>
-              <div className={`opt-icon qa-icon ${o.color}`}>
-                <svg viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none">{o.icon}</svg>
-              </div>
-              <div className="opt-info">
-                <p className="opt-title">{o.label}</p>
-                <p className="opt-sub">{o.sub}</p>
-              </div>
+              <div className={`opt-icon qa-icon ${o.color}`}><svg viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none">{o.icon}</svg></div>
+              <div className="opt-info"><p className="opt-title">{o.label}</p><p className="opt-sub">{o.sub}</p></div>
             </div>
           ))}
         </div>
@@ -636,36 +529,67 @@ function FileOptions({ record, onClose, onView, onDownload, onDelete }) {
   );
 }
 
-/* ─────────────────────────────────────────
-   UPLOAD SHEET
-───────────────────────────────────────── */
+/* ── UPLOAD SHEET (multi-file) ── */
 function UploadSheet({ onClose, userId, onUploaded, showToast }) {
-  const [busy, setBusy]     = useState(false);
-  const [pct,  setPct]      = useState(0);
-  const [label, setLabel]   = useState("");
+  // queue: array of { file, status: "pending"|"uploading"|"done"|"error", error? }
+  const [queue,  setQueue]  = useState([]);
+  const [busy,   setBusy]   = useState(false);
+  const [current, setCurrent] = useState("");   // currently uploading filename
+  const [doneCount, setDoneCount] = useState(0);
+
   const imgRef = useRef(null);
   const vidRef = useRef(null);
   const docRef = useRef(null);
 
-  const doUpload = async (file) => {
-    if (!file) return;
-    setBusy(true); setPct(5);
-    setLabel(`Uploading ${file.name}…`);
-    try {
-      // Simulate progress since Supabase JS SDK v2 doesn't expose onProgress
-      const interval = setInterval(() => setPct(p => Math.min(p + 12, 88)), 300);
-      await uploadFile(file, userId);
-      clearInterval(interval);
-      setPct(100);
-      await new Promise(r => setTimeout(r, 400));
-      showToast(`✅ ${file.name} uploaded!`);
-      onUploaded();
-      onClose();
-    } catch (e) {
-      showToast(`❌ ${e.message}`);
-    } finally {
-      setBusy(false); setPct(0); setLabel("");
+  // Add files to queue (dedup by name+size)
+  const addFiles = (fileList) => {
+    const incoming = Array.from(fileList);
+    setQueue(prev => {
+      const existing = new Set(prev.map(q => q.file.name + q.file.size));
+      const newOnes = incoming.filter(f => !existing.has(f.name + f.size));
+      return [...prev, ...newOnes.map(f => ({ file: f, status: "pending" }))];
+    });
+  };
+
+  const removeFromQueue = (idx) => {
+    setQueue(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const uploadAll = async () => {
+    if (queue.length === 0) return;
+    setBusy(true);
+    setDoneCount(0);
+    let done = 0;
+    for (let i = 0; i < queue.length; i++) {
+      const item = queue[i];
+      if (item.status === "done") { done++; continue; }
+      setCurrent(item.file.name);
+      setQueue(prev => prev.map((q, idx) => idx === i ? { ...q, status: "uploading" } : q));
+      try {
+        await uploadFile(item.file, userId);
+        done++;
+        setDoneCount(done);
+        setQueue(prev => prev.map((q, idx) => idx === i ? { ...q, status: "done" } : q));
+      } catch (e) {
+        setQueue(prev => prev.map((q, idx) => idx === i ? { ...q, status: "error", error: e.message } : q));
+      }
     }
+    setBusy(false);
+    setCurrent("");
+    showToast(`✅ ${done} file${done !== 1 ? "s" : ""} uploaded!`);
+    onUploaded();
+    // small delay so user sees all green ticks
+    setTimeout(() => onClose(), 700);
+  };
+
+  const pendingCount = queue.filter(q => q.status === "pending" || q.status === "error").length;
+  const totalCount   = queue.length;
+
+  const statusIcon = (s) => {
+    if (s === "pending")   return <span style={{color:"#9ca3af"}}>○</span>;
+    if (s === "uploading") return <span className="spin spin-teal" style={{width:14,height:14,borderWidth:2}}/>;
+    if (s === "done")      return <span style={{color:"#059669"}}>✓</span>;
+    if (s === "error")     return <span style={{color:"#e11d48"}}>✕</span>;
   };
 
   return (
@@ -674,36 +598,23 @@ function UploadSheet({ onClose, userId, onUploaded, showToast }) {
         <div className="sheet-handle"/>
         <p className="sheet-title">Upload Files</p>
 
-        {busy && (
-          <div className="prog-bar-wrap">
-            <div className="prog-bar-label">
-              <span>{label}</span>
-              <span>{pct}%</span>
-            </div>
-            <div className="prog-bar-track">
-              <div className="prog-bar-fill" style={{width:`${pct}%`}}/>
-            </div>
-          </div>
-        )}
-
+        {/* Pick type buttons */}
         {!busy && (
-          <div className="upload-opts">
+          <div className="upload-opts" style={{marginBottom: queue.length ? 16 : 0}}>
             {[
-              { label:"Images",   sub:"JPG, PNG, GIF…",   color:"teal",   accept:"image/*",                   ref:imgRef, icon:<><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></> },
-              { label:"Videos",   sub:"MP4, MOV, AVI…",   color:"violet", accept:"video/*",                   ref:vidRef, icon:<><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></> },
-              { label:"Documents",sub:"PDF, DOC, TXT…",   color:"blue",   accept:".pdf,.doc,.docx,.txt,.xlsx,.pptx,.zip", ref:docRef, icon:<><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></> },
-              { label:"Any File", sub:"All file types",   color:"rose",   accept:"*",                          ref:null,   icon:<><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></> },
-            ].map((o,i) => (
+              { label:"Images",    sub:"Select multiple",  color:"teal",   accept:"image/*",   ref:imgRef, multiple:true,  icon:<><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></> },
+              { label:"Videos",    sub:"Select multiple",  color:"violet", accept:"video/*",   ref:vidRef, multiple:true,  icon:<><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></> },
+              { label:"Documents", sub:"PDF, DOC, ZIP…",   color:"blue",   accept:".pdf,.doc,.docx,.txt,.xlsx,.pptx,.zip", ref:docRef, multiple:true, icon:<><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></> },
+              { label:"Any File",  sub:"All types",        color:"rose",   accept:"*",         ref:null,   multiple:true,  icon:<><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></> },
+            ].map((o, i) => (
               <div key={i} className="upload-opt" onClick={() => {
                 if (o.ref) { o.ref.current.click(); return; }
-                // "Any File" — create a temp input
                 const inp = document.createElement("input");
-                inp.type = "file";
-                inp.accept = o.accept;
-                inp.onchange = e => doUpload(e.target.files[0]);
+                inp.type = "file"; inp.accept = o.accept; inp.multiple = true;
+                inp.onchange = e => addFiles(e.target.files);
                 inp.click();
               }}>
-                {o.ref && <input ref={o.ref} type="file" accept={o.accept} style={{display:"none"}} onChange={e => doUpload(e.target.files[0])}/>}
+                {o.ref && <input ref={o.ref} type="file" accept={o.accept} multiple style={{display:"none"}} onChange={e => addFiles(e.target.files)}/>}
                 <div className={`upload-opt-icon qa-icon ${o.color}`}>
                   <svg viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none">{o.icon}</svg>
                 </div>
@@ -713,20 +624,89 @@ function UploadSheet({ onClose, userId, onUploaded, showToast }) {
             ))}
           </div>
         )}
+
+        {/* Upload queue */}
+        {queue.length > 0 && (
+          <>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <span style={{fontSize:"clamp(12px,3vw,13px)",fontWeight:700,color:"var(--text)"}}>
+                {totalCount} file{totalCount !== 1 ? "s" : ""} selected
+              </span>
+              {!busy && (
+                <span style={{fontSize:12,color:"var(--teal2)",fontWeight:600,cursor:"pointer"}} onClick={() => setQueue([])}>
+                  Clear all
+                </span>
+              )}
+            </div>
+
+            {busy && current && (
+              <div className="prog-bar-wrap" style={{marginBottom:12}}>
+                <div className="prog-bar-label">
+                  <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"70%"}}>{current}</span>
+                  <span>{doneCount}/{totalCount}</span>
+                </div>
+                <div className="prog-bar-track">
+                  <div className="prog-bar-fill" style={{width:`${Math.round((doneCount / totalCount) * 100)}%`}}/>
+                </div>
+              </div>
+            )}
+
+            <div className="queue-list">
+              {queue.map((item, i) => (
+                <div className="queue-item" key={i}>
+                  <span className="queue-item-status">{statusIcon(item.status)}</span>
+                  <span className="queue-item-name">{item.file.name}</span>
+                  <span className="queue-item-size">{formatSize(item.file.size)}</span>
+                  {!busy && item.status !== "done" && (
+                    <button className="queue-remove" onClick={() => removeFromQueue(i)}>×</button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {!busy && pendingCount > 0 && (
+              <button className="upload-all-btn" onClick={uploadAll}>
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                Upload {pendingCount} file{pendingCount !== 1 ? "s" : ""}
+              </button>
+            )}
+          </>
+        )}
+
+        {queue.length === 0 && (
+          <p style={{textAlign:"center",fontSize:"clamp(11px,3vw,13px)",color:"var(--muted)",marginTop:8}}>
+            Select files above to add them to the queue
+          </p>
+        )}
       </div>
     </div>
   );
 }
 
-/* ─────────────────────────────────────────
-   HOME BODY
-───────────────────────────────────────── */
+/* ── IMAGE THUMB ── */
+function ImageThumb({ record }) {
+  const [url, setUrl] = useState(null);
+  useEffect(() => {
+    if (record.bucket === "images") {
+      const { data } = supabase.storage.from("images").getPublicUrl(record.storage_path);
+      setUrl(data.publicUrl);
+    }
+  }, [record]);
+  return url
+    ? <img src={url} alt={record.original_name} loading="lazy"/>
+    : <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>;
+}
+
+/* ── HOME BODY ── */
 function HomeBody({ userId, showToast, onUploadDone, refreshKey }) {
   const [files, setFiles]     = useState([]);
   const [loading, setLoading] = useState(true);
   const [showUp, setShowUp]   = useState(false);
   const [viewer, setViewer]   = useState(null);
   const [opts,   setOpts]     = useState(null);
+  const mcColors = ["mc1","mc2","mc3","mc4","mc5","mc6"];
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -739,23 +719,16 @@ function HomeBody({ userId, showToast, onUploadDone, refreshKey }) {
 
   const handleDelete = async (record) => {
     setOpts(null);
-    try {
-      await deleteFile(record);
-      showToast("🗑️ File deleted");
-      load();
-      onUploadDone();
-    } catch (e) { showToast("❌ " + e.message); }
+    try { await deleteFile(record); showToast("🗑️ File deleted"); load(); onUploadDone(); }
+    catch (e) { showToast("❌ " + e.message); }
   };
 
-  const mcColors = ["mc1","mc2","mc3","mc4","mc5","mc6"];
   const imageFiles = files.filter(f => f.category === "images").slice(0, 6);
 
   return (
     <>
       <div className="home-body">
         <div className="sheet-pill"/>
-
-        {/* Quick Actions */}
         <div className="sec-hdr"><span className="sec-title">Quick Actions</span></div>
         <div className="qa-grid">
           {[
@@ -771,30 +744,23 @@ function HomeBody({ userId, showToast, onUploadDone, refreshKey }) {
           ))}
         </div>
 
-        {/* Recent Files */}
         <div className="sec-hdr" style={{marginTop:4}}>
           <span className="sec-title">Recent Files</span>
           <span className="sec-link">See All</span>
         </div>
         {loading ? (
-          <div style={{display:"flex",justifyContent:"center",padding:"24px 0"}}>
-            <div className="spin spin-teal" style={{width:28,height:28}}/>
-          </div>
+          <div style={{display:"flex",justifyContent:"center",padding:"24px 0"}}><div className="spin spin-teal" style={{width:28,height:28}}/></div>
         ) : files.length === 0 ? (
           <div className="empty" style={{padding:"20px 0"}}>
             <div className="empty-icon"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg></div>
-            <h3>No files yet</h3>
-            <p>Tap Upload to add your first file</p>
+            <h3>No files yet</h3><p>Tap Upload to add your first file</p>
           </div>
         ) : (
           <div className="file-list">
             {files.slice(0,4).map(f => (
               <div className="file-row" key={f.id} onClick={() => setViewer(f)}>
                 <div className={`file-thumb ft-${getFileType(f.category)}`}><FileThumb type={getFileType(f.category)}/></div>
-                <div className="file-info">
-                  <p className="file-name">{f.original_name}</p>
-                  <p className="file-meta">{timeAgo(f.created_at)}</p>
-                </div>
+                <div className="file-info"><p className="file-name">{f.original_name}</p><p className="file-meta">{timeAgo(f.created_at)}</p></div>
                 <span className="file-size">{formatSize(f.size)}</span>
                 <span className="file-dots" onClick={e => { e.stopPropagation(); setOpts(f); }}>···</span>
               </div>
@@ -802,11 +768,7 @@ function HomeBody({ userId, showToast, onUploadDone, refreshKey }) {
           </div>
         )}
 
-        {/* Media Gallery */}
-        <div className="sec-hdr">
-          <span className="sec-title">Media Gallery</span>
-          <span className="sec-link">See All</span>
-        </div>
+        <div className="sec-hdr"><span className="sec-title">Media Gallery</span><span className="sec-link">See All</span></div>
         {imageFiles.length === 0 ? (
           <div className="empty" style={{padding:"16px 0"}}>
             <div className="empty-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>
@@ -815,9 +777,7 @@ function HomeBody({ userId, showToast, onUploadDone, refreshKey }) {
         ) : (
           <div className="media-grid">
             {imageFiles.map((f,i) => (
-              <div className={`media-cell ${mcColors[i%6]}`} key={f.id} onClick={() => setViewer(f)}>
-                <ImageThumb record={f}/>
-              </div>
+              <div className={`media-cell ${mcColors[i%6]}`} key={f.id} onClick={() => setViewer(f)}><ImageThumb record={f}/></div>
             ))}
           </div>
         )}
@@ -830,23 +790,7 @@ function HomeBody({ userId, showToast, onUploadDone, refreshKey }) {
   );
 }
 
-/* Tiny image thumbnail with lazy URL loading */
-function ImageThumb({ record }) {
-  const [url, setUrl] = useState(null);
-  useEffect(() => {
-    if (record.bucket === "images") {
-      const { data } = supabase.storage.from("images").getPublicUrl(record.storage_path);
-      setUrl(data.publicUrl);
-    }
-  }, [record]);
-  return url ? <img src={url} alt={record.original_name} loading="lazy"/> : (
-    <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-  );
-}
-
-/* ─────────────────────────────────────────
-   FILES BODY (with real Supabase data)
-───────────────────────────────────────── */
+/* ── FILES BODY ── */
 function FilesBody({ userId, showToast, refreshKey, onUploadDone }) {
   const [files,   setFiles]   = useState([]);
   const [loading, setLoading] = useState(true);
@@ -869,35 +813,24 @@ function FilesBody({ userId, showToast, refreshKey, onUploadDone }) {
 
   const handleDelete = async (record) => {
     setOpts(null);
-    try {
-      await deleteFile(record);
-      showToast("🗑️ File deleted");
-      load();
-      onUploadDone();
-    } catch (e) { showToast("❌ " + e.message); }
+    try { await deleteFile(record); showToast("🗑️ File deleted"); load(); onUploadDone(); }
+    catch (e) { showToast("❌ " + e.message); }
   };
 
   return (
     <>
       <div className="home-body">
         <div className="sheet-pill"/>
-        <div className="sec-hdr">
-          <span className="sec-title">All Files</span>
-          <span className="sec-link">{visible.length} items</span>
-        </div>
-
+        <div className="sec-hdr"><span className="sec-title">All Files</span><span className="sec-link">{visible.length} items</span></div>
         <div className="search-wrap">
           <div className="search-bar">
             <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             <input placeholder="Search files…" value={query} onChange={e => setQuery(e.target.value)}/>
           </div>
           <div className="sort-btn" onClick={() => setShowUp(true)}>
-            <svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2">
-              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-            </svg>
+            <svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
           </div>
         </div>
-
         <div className="filter-row">
           {["all","images","videos","docs"].map(f => (
             <span key={f} className={`filter-chip ${filter===f?"active":""}`} onClick={() => setFilter(f)}>
@@ -905,33 +838,25 @@ function FilesBody({ userId, showToast, refreshKey, onUploadDone }) {
             </span>
           ))}
         </div>
-
         {loading ? (
-          <div style={{display:"flex",justifyContent:"center",padding:"32px 0"}}>
-            <div className="spin spin-teal" style={{width:32,height:32}}/>
-          </div>
+          <div style={{display:"flex",justifyContent:"center",padding:"32px 0"}}><div className="spin spin-teal" style={{width:32,height:32}}/></div>
         ) : visible.length === 0 ? (
           <div className="empty">
             <div className="empty-icon"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg></div>
-            <h3>No files found</h3>
-            <p>{query ? "Try a different search term" : "Upload your first file using the button above"}</p>
+            <h3>No files found</h3><p>{query ? "Try a different search term" : "Upload your first file using the button above"}</p>
           </div>
         ) : (
           <div className="file-list">
             {visible.map(f => (
               <div className="file-row" key={f.id} onClick={() => setViewer(f)}>
                 <div className={`file-thumb ft-${getFileType(f.category)}`}><FileThumb type={getFileType(f.category)}/></div>
-                <div className="file-info">
-                  <p className="file-name">{f.original_name}</p>
-                  <p className="file-meta">{timeAgo(f.created_at)} · {formatSize(f.size)}</p>
-                </div>
+                <div className="file-info"><p className="file-name">{f.original_name}</p><p className="file-meta">{timeAgo(f.created_at)} · {formatSize(f.size)}</p></div>
                 <span className="file-dots" onClick={e => { e.stopPropagation(); setOpts(f); }}>···</span>
               </div>
             ))}
           </div>
         )}
       </div>
-
       {showUp && <UploadSheet onClose={() => setShowUp(false)} userId={userId} onUploaded={() => { load(); onUploadDone(); }} showToast={showToast}/>}
       {viewer  && <FileViewer record={viewer} onClose={() => setViewer(null)} onDownload={r => { downloadFile(r); showToast("⬇️ Downloading…"); }}/>}
       {opts    && <FileOptions record={opts} onClose={() => setOpts(null)} onView={() => { setViewer(opts); setOpts(null); }} onDownload={r => { downloadFile(r); showToast("⬇️ Downloading…"); setOpts(null); }} onDelete={() => handleDelete(opts)}/>}
@@ -939,46 +864,32 @@ function FilesBody({ userId, showToast, refreshKey, onUploadDone }) {
   );
 }
 
-/* ─────────────────────────────────────────
-   GALLERY BODY
-───────────────────────────────────────── */
+/* ── GALLERY BODY ── */
 function GalleryBody({ userId, showToast, refreshKey }) {
   const [files,   setFiles]   = useState([]);
   const [loading, setLoading] = useState(true);
   const [viewer,  setViewer]  = useState(null);
   const mcColors = ["mc1","mc2","mc3","mc4","mc5","mc6"];
-
   useEffect(() => {
     setLoading(true);
-    fetchFiles(userId, "images")
-      .then(d => setFiles(d))
-      .finally(() => setLoading(false));
+    fetchFiles(userId, "images").then(d => setFiles(d)).finally(() => setLoading(false));
   }, [userId, refreshKey]);
-
   return (
     <>
       <div className="home-body">
         <div className="sheet-pill"/>
-        <div className="sec-hdr">
-          <span className="sec-title">Media Gallery</span>
-          <span className="sec-link">{files.length} images</span>
-        </div>
+        <div className="sec-hdr"><span className="sec-title">Media Gallery</span><span className="sec-link">{files.length} images</span></div>
         {loading ? (
-          <div style={{display:"flex",justifyContent:"center",padding:"40px 0"}}>
-            <div className="spin spin-teal" style={{width:32,height:32}}/>
-          </div>
+          <div style={{display:"flex",justifyContent:"center",padding:"40px 0"}}><div className="spin spin-teal" style={{width:32,height:32}}/></div>
         ) : files.length === 0 ? (
           <div className="empty">
             <div className="empty-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>
-            <h3>No images yet</h3>
-            <p>Upload image files to see them here</p>
+            <h3>No images yet</h3><p>Upload image files to see them here</p>
           </div>
         ) : (
           <div className="media-grid">
             {files.map((f,i) => (
-              <div className={`media-cell ${mcColors[i%6]}`} key={f.id} onClick={() => setViewer(f)}>
-                <ImageThumb record={f}/>
-              </div>
+              <div className={`media-cell ${mcColors[i%6]}`} key={f.id} onClick={() => setViewer(f)}><ImageThumb record={f}/></div>
             ))}
           </div>
         )}
@@ -988,45 +899,31 @@ function GalleryBody({ userId, showToast, refreshKey }) {
   );
 }
 
-/* ─────────────────────────────────────────
-   PROFILE BODY
-───────────────────────────────────────── */
+/* ── PROFILE BODY ── */
 function ProfileBody({ user, userId, onLogout, showToast, refreshKey }) {
-  const [profile, setProfile] = useState(null);
+  const [profile,   setProfile]   = useState(null);
   const [fileCount, setFileCount] = useState(0);
-
   useEffect(() => {
     fetchProfile(userId).then(p => setProfile(p));
     fetchFiles(userId).then(f => setFileCount(f.length));
   }, [userId, refreshKey]);
-
   const usedPct = profile ? Math.min((profile.storage_used / profile.storage_limit) * 100, 100).toFixed(1) : 0;
   const displayName = profile?.full_name || user?.user_metadata?.full_name || user?.email?.split("@")[0] || "User";
   const nameParts = displayName.trim().split(" ");
-
   return (
     <div className="home-page prof-page">
       <div className="prof-hdr">
-        <div className="prof-avatar">
-          <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        </div>
+        <div className="prof-avatar"><svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
         <p className="prof-name">{nameParts[0]} <span style={{color:"var(--tl)"}}>{nameParts.slice(1).join(" ")}</span></p>
         <p className="prof-email">{user?.email}</p>
       </div>
-
       <div className="prof-body">
         <div className="sheet-pill"/>
         <div className="prof-stats">
-          {[
-            [fileCount.toString(), "Files"],
-            [profile ? formatGB(profile.storage_used) : "—", "Used"],
-            [profile ? `${usedPct}%` : "—", "Full"],
-          ].map(([v,l]) => (
+          {[[fileCount.toString(),"Files"],[profile?formatGB(profile.storage_used):"—","Used"],[profile?`${usedPct}%`:"—","Full"]].map(([v,l]) => (
             <div className="prof-stat" key={l}><p className="pstat-val">{v}</p><p className="pstat-lbl">{l}</p></div>
           ))}
         </div>
-
-        {/* Storage bar */}
         {profile && (
           <div style={{marginBottom:"clamp(22px,6vw,30px)"}}>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
@@ -1038,14 +935,13 @@ function ProfileBody({ user, userId, onLogout, showToast, refreshKey }) {
             </div>
           </div>
         )}
-
         <div className="menu-list">
           {[
-            { icon:<><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></>, label:"Edit Profile",      sub:"Update name & email",  color:"teal"   },
-            { icon:<><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></>,           label:"Privacy & Security", sub:"Password, 2FA",        color:"blue"   },
-            { icon:<><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></>,   label:"Notifications",      sub:"Manage alerts",        color:"violet" },
-            { icon:<><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></>, label:"Storage Plan",  sub:"Upgrade to 1 TB",      color:"rose"   },
-            { icon:<><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 010 14.14M4.93 4.93a10 10 0 000 14.14"/></>, label:"Help & Support", sub:"Get help anytime",     color:"amber"  },
+            { icon:<><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></>, label:"Edit Profile", sub:"Update name & email", color:"teal" },
+            { icon:<><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></>, label:"Privacy & Security", sub:"Password, 2FA", color:"blue" },
+            { icon:<><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></>, label:"Notifications", sub:"Manage alerts", color:"violet" },
+            { icon:<><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></>, label:"Storage Plan", sub:"Upgrade to 1 TB", color:"rose" },
+            { icon:<><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 010 14.14M4.93 4.93a10 10 0 000 14.14"/></>, label:"Help & Support", sub:"Get help anytime", color:"amber" },
           ].map((m,i) => (
             <div className="menu-row" key={i} onClick={() => showToast(`⚙️ Opening ${m.label}…`)}>
               <div className={`menu-row-icon qa-icon ${m.color}`}><svg viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none">{m.icon}</svg></div>
@@ -1060,37 +956,33 @@ function ProfileBody({ user, userId, onLogout, showToast, refreshKey }) {
   );
 }
 
-/* ─────────────────────────────────────────
-   HOME PAGE (shell with nav)
-───────────────────────────────────────── */
+/* ── HOME PAGE ── */
 function HomePage({ user, onLogout }) {
   const [nav,     setNav]     = useState("home");
   const [toast,   setToast]   = useState("");
   const [profile, setProfile] = useState(null);
-  const [refresh, setRefresh] = useState(0);   // bump to reload data
+  const [refresh, setRefresh] = useState(0);
+  const [showUp,  setShowUp]  = useState(false);
   const userId = user.id;
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 2400); };
-  const onUploadDone = () => { setRefresh(r => r + 1); };
+  const onUploadDone = () => setRefresh(r => r + 1);
 
   useEffect(() => { fetchProfile(userId).then(p => setProfile(p)); }, [userId, refresh]);
 
   const usedPct = profile ? Math.min((profile.storage_used / profile.storage_limit) * 100, 100) : 0;
   const displayName = (profile?.full_name || user?.user_metadata?.full_name || user?.email?.split("@")[0] || "User").trim().split(" ");
-
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
   const navL = [
-    { id:"home",    label:"Home",    icon:<><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></> },
-    { id:"files",   label:"Files",   icon:<><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></> },
+    { id:"home",  label:"Home",  icon:<><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></> },
+    { id:"files", label:"Files", icon:<><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></> },
   ];
   const navR = [
     { id:"gallery", label:"Gallery", icon:<><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></> },
     { id:"profile", label:"Profile", icon:<><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></> },
   ];
-
-  const [showUp, setShowUp] = useState(false);
 
   return (
     <div className="home-page">
@@ -1106,21 +998,17 @@ function HomePage({ user, onLogout }) {
               <div className="notif-dot"/>
             </div>
           </div>
-
           <div className="hdr-greet">
             <p className="hdr-greet-sub">{greeting} 👋</p>
             <h2 className="hdr-greet-name">{displayName[0]} <span>{displayName.slice(1).join(" ")}</span></h2>
             <p className="hdr-greet-desc">Your files are safe & organized</p>
           </div>
-
           <div className="stor-card">
             <div className="stor-top">
               <span className="stor-lbl">Storage Used</span>
               <span className="stor-amt">{profile ? `${formatGB(profile.storage_used)} / ${formatGB(profile.storage_limit)}` : "Loading…"}</span>
             </div>
-            <div className="stor-track">
-              <div className="stor-fill" style={{width:`${usedPct}%`}}/>
-            </div>
+            <div className="stor-track"><div className="stor-fill" style={{width:`${usedPct}%`}}/></div>
             <div className="stor-types">
               {[["#7FFFD4","Images"],["#C4B5FD","Videos"],["#FDE68A","Docs"]].map(([c,l]) => (
                 <div className="stor-type" key={l}><div className="s-dot" style={{background:c}}/><span>{l}</span></div>
@@ -1130,10 +1018,10 @@ function HomePage({ user, onLogout }) {
         </div>
       )}
 
-      {nav === "home"    && <HomeBody    userId={userId} showToast={showToast} onUploadDone={onUploadDone} refreshKey={refresh}/>}
-      {nav === "files"   && <FilesBody   userId={userId} showToast={showToast} onUploadDone={onUploadDone} refreshKey={refresh}/>}
-      {nav === "gallery" && <GalleryBody userId={userId} showToast={showToast} refreshKey={refresh}/>}
-      {nav === "profile" && <ProfileBody user={user} userId={userId} onLogout={onLogout} showToast={showToast} refreshKey={refresh}/>}
+      {nav==="home"    && <HomeBody    userId={userId} showToast={showToast} onUploadDone={onUploadDone} refreshKey={refresh}/>}
+      {nav==="files"   && <FilesBody   userId={userId} showToast={showToast} onUploadDone={onUploadDone} refreshKey={refresh}/>}
+      {nav==="gallery" && <GalleryBody userId={userId} showToast={showToast} refreshKey={refresh}/>}
+      {nav==="profile" && <ProfileBody user={user} userId={userId} onLogout={onLogout} showToast={showToast} refreshKey={refresh}/>}
 
       {toast && <div className="toast">{toast}</div>}
 
@@ -1155,31 +1043,22 @@ function HomePage({ user, onLogout }) {
         ))}
       </div>
 
-      {showUp && <UploadSheet onClose={() => setShowUp(false)} userId={userId} onUploaded={() => { onUploadDone(); setShowUp(false); }} showToast={showToast}/>}
+      {showUp && <UploadSheet onClose={() => setShowUp(false)} userId={userId} onUploaded={() => { onUploadDone(); }} showToast={showToast}/>}
     </div>
   );
 }
 
-/* ─────────────────────────────────────────
-   ROOT
-───────────────────────────────────────── */
+/* ── ROOT ── */
 export default function App() {
-  const [user,    setUser]    = useState(undefined);   // undefined = checking, null = logged out
+  const [user, setUser] = useState(undefined);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-    });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
-      setUser(session?.user ?? null);
-    });
+    supabase.auth.getSession().then(({ data: { session } }) => setUser(session?.user ?? null));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => setUser(session?.user ?? null));
     return () => subscription.unsubscribe();
   }, []);
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-  };
+  const handleLogout = async () => { await supabase.auth.signOut(); setUser(null); };
 
   if (user === undefined) {
     return (
@@ -1201,10 +1080,7 @@ export default function App() {
     <>
       <style>{styles}</style>
       <div className="cv-app">
-        {!user
-          ? <AuthPage onAuth={u => setUser(u)}/>
-          : <HomePage user={user} onLogout={handleLogout}/>
-        }
+        {!user ? <AuthPage onAuth={u => setUser(u)}/> : <HomePage user={user} onLogout={handleLogout}/>}
       </div>
     </>
   );
