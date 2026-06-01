@@ -111,9 +111,6 @@ html,body{height:100%;overflow-x:hidden}
 .auth-brand-name span{color:var(--teal2)}
 .auth-headline{font-family:var(--nunito);font-size:clamp(18px,5.2vw,25px);font-weight:800;color:var(--text);text-align:center;line-height:1.25;margin-bottom:clamp(3px,1vw,6px)}
 .auth-sub{font-size:clamp(11px,3vw,13px);color:var(--muted);text-align:center;margin-bottom:clamp(18px,4.5vw,26px);line-height:1.5;padding:0 clamp(4px,2vw,16px)}
-.auth-tabs{display:flex;background:#f5f6f8;border-radius:99px;padding:4px;margin-bottom:clamp(18px,5vw,24px)}
-.auth-tab{flex:1;text-align:center;padding:clamp(8px,2.5vw,11px);border-radius:99px;font-family:var(--nunito);font-size:clamp(12px,3.5vw,14px);font-weight:700;cursor:pointer;transition:all 0.2s;color:var(--muted)}
-.auth-tab.active{background:var(--white);color:var(--text);box-shadow:0 2px 8px rgba(0,0,0,0.1)}
 .cv-field{margin-bottom:clamp(11px,3vw,15px)}
 .cv-field label{display:block;font-size:clamp(11px,3vw,12px);font-weight:600;color:var(--muted);margin-bottom:5px;padding-left:4px}
 .cv-input-wrap{position:relative;display:flex;align-items:center;background:#f5f6f8;border-radius:99px;border:1.5px solid #f0f1f3;transition:border-color 0.2s,box-shadow 0.2s,background 0.2s}
@@ -132,7 +129,6 @@ html,body{height:100%;overflow-x:hidden}
 .cv-btn:active{transform:scale(0.98)}
 .cv-btn:disabled{opacity:0.6;cursor:not-allowed}
 .auth-err{background:#fff1f2;border:1.5px solid #fecdd3;color:#e11d48;border-radius:12px;padding:clamp(10px,3vw,12px) clamp(12px,3.5vw,14px);font-size:clamp(11px,3vw,13px);font-weight:500;margin-bottom:14px;text-align:center}
-.auth-ok{background:#f0fdf4;border:1.5px solid #a7f3d0;color:#059669;border-radius:12px;padding:clamp(10px,3vw,12px) clamp(12px,3.5vw,14px);font-size:clamp(11px,3vw,13px);font-weight:500;margin-bottom:14px;text-align:center}
 
 /* HOME */
 .home-page{min-height:100svh;display:flex;flex-direction:column;background:var(--bg)}
@@ -325,6 +321,18 @@ html,body{height:100%;overflow-x:hidden}
 .logout-btn{width:100%;padding:clamp(13px,3.8vw,15px);background:#fff1f2;border:1.5px solid #fecdd3;border-radius:99px;font-family:var(--nunito);font-size:clamp(13px,3.8vw,15px);font-weight:700;color:#e11d48;cursor:pointer;transition:opacity 0.2s,transform 0.12s}
 .logout-btn:active{transform:scale(0.98)}
 
+/* LOGOUT CONFIRM */
+.logout-confirm-icon{width:clamp(52px,14vw,64px);height:clamp(52px,14vw,64px);background:#fff1f2;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto clamp(12px,3.5vw,16px)}
+.logout-confirm-icon svg{width:48%;height:48%;stroke:#e11d48;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.logout-confirm-title{font-family:var(--nunito);font-size:clamp(17px,5vw,21px);font-weight:800;color:var(--text);text-align:center;margin-bottom:6px}
+.logout-confirm-sub{font-size:clamp(12px,3.2vw,13px);color:var(--muted);text-align:center;line-height:1.5;margin-bottom:clamp(20px,5.5vw,28px)}
+.logout-confirm-btns{display:flex;gap:clamp(10px,3vw,14px)}
+.logout-cancel-btn{flex:1;padding:clamp(13px,3.8vw,15px);background:#f5f6f8;border:1.5px solid var(--border);border-radius:99px;font-family:var(--nunito);font-size:clamp(13px,3.8vw,15px);font-weight:700;color:var(--text);cursor:pointer;transition:opacity 0.2s,transform 0.12s}
+.logout-cancel-btn:active{transform:scale(0.98)}
+.logout-confirm-btn{flex:1;padding:clamp(13px,3.8vw,15px);background:linear-gradient(135deg,#FF6B6B,#e11d48);border:none;border-radius:99px;font-family:var(--nunito);font-size:clamp(13px,3.8vw,15px);font-weight:700;color:#fff;cursor:pointer;transition:opacity 0.2s,transform 0.12s;box-shadow:0 6px 18px rgba(225,29,72,0.3)}
+.logout-confirm-btn:active{transform:scale(0.98)}
+.logout-confirm-btn:disabled{opacity:0.6;cursor:not-allowed}
+
 /* TOAST */
 .toast{position:fixed;bottom:clamp(76px,18vw,90px);left:50%;transform:translateX(-50%);background:#111827;color:#fff;font-size:clamp(12px,3.2vw,13px);font-weight:600;padding:clamp(9px,2.5vw,11px) clamp(16px,4.5vw,22px);border-radius:99px;box-shadow:0 6px 20px rgba(0,0,0,0.25);z-index:999;white-space:nowrap;animation:fadeIn 0.2s ease;max-width:90vw;text-overflow:ellipsis;overflow:hidden}
 
@@ -354,39 +362,61 @@ const FileThumb = ({ type }) => {
   return <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>;
 };
 
+/* ── LOGOUT CONFIRM SHEET ── */
+function LogoutConfirm({ onCancel, onConfirm }) {
+  const [busy, setBusy] = useState(false);
+  const handleConfirm = async () => {
+    setBusy(true);
+    await onConfirm();
+    setBusy(false);
+  };
+  return (
+    <div className="overlay" onClick={onCancel}>
+      <div className="sheet" onClick={e => e.stopPropagation()}>
+        <div className="sheet-handle"/>
+        <div className="logout-confirm-icon">
+          <svg viewBox="0 0 24 24">
+            <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+        </div>
+        <p className="logout-confirm-title">Log out?</p>
+        <p className="logout-confirm-sub">You'll need to sign in again to access your files and storage.</p>
+        <div className="logout-confirm-btns">
+          <button className="logout-cancel-btn" onClick={onCancel} disabled={busy}>Cancel</button>
+          <button className="logout-confirm-btn" onClick={handleConfirm} disabled={busy}>
+            {busy ? <><span className="spin" style={{width:16,height:16,borderWidth:2}}/></> : "Yes, log out"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── AUTH ── */
+// CHANGED: login-only, no signup tab, no sign-up form
 function AuthPage({ onAuth }) {
-  const [tab, setTab]     = useState("login");
   const [email, setEmail] = useState("");
   const [pass, setPass]   = useState("");
-  const [name, setName]   = useState("");
   const [show, setShow]   = useState(false);
   const [rem, setRem]     = useState(false);
   const [busy, setBusy]   = useState(false);
   const [err, setErr]     = useState("");
-  const [ok, setOk]       = useState("");
 
   const handle = async () => {
-    setErr(""); setOk("");
-    if (!email || !pass) { setErr("Please fill in all fields."); return; }
-    if (tab === "signup" && !name) { setErr("Please enter your name."); return; }
-    if (pass.length < 6) { setErr("Password must be at least 6 characters."); return; }
+    setErr("");
+    if (!email || !pass) { setErr("Please enter your email and password."); return; }
     setBusy(true);
     try {
-      if (tab === "login") {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
-        if (error) throw error;
-        onAuth(data.user);
-      } else {
-        const { data, error } = await supabase.auth.signUp({
-          email, password: pass, options: { data: { full_name: name } }
-        });
-        if (error) throw error;
-        if (data.user && data.session) { onAuth(data.user); }
-        else { setOk("Account created! Check your email to confirm, then log in."); setTab("login"); }
-      }
-    } catch (e) { setErr(e.message || "Something went wrong."); }
-    finally { setBusy(false); }
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
+      if (error) throw error;
+      onAuth(data.user);
+    } catch (e) {
+      setErr(e.message || "Invalid email or password.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -414,23 +444,11 @@ function AuthPage({ onAuth }) {
           <div className="auth-brand-icon"><CloudIcon/></div>
           <span className="auth-brand-name">Cloud<span>Vault</span></span>
         </div>
-        <h2 className="auth-headline">{tab === "login" ? "Welcome Back 👋" : "Create Your Account"}</h2>
-        <p className="auth-sub">{tab === "login" ? "Sign in to access your files and storage." : "Join CloudVault and keep your files safe."}</p>
-        <div className="auth-tabs">
-          <div className={`auth-tab ${tab==="login"?"active":""}`} onClick={() => { setTab("login"); setErr(""); setOk(""); }}>Log In</div>
-          <div className={`auth-tab ${tab==="signup"?"active":""}`} onClick={() => { setTab("signup"); setErr(""); setOk(""); }}>Sign Up</div>
-        </div>
+        <h2 className="auth-headline">Welcome Back 👋</h2>
+        <p className="auth-sub">Sign in with your credentials to access your files and storage.</p>
+
         {err && <div className="auth-err">{err}</div>}
-        {ok  && <div className="auth-ok">{ok}</div>}
-        {tab === "signup" && (
-          <div className="cv-field">
-            <label>Full Name</label>
-            <div className="cv-input-wrap">
-              <svg className="fi" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" fill="none" stroke="#b0b5be" strokeWidth="1.8"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-              <input className="cv-input" placeholder="Your Name" value={name} onChange={e => setName(e.target.value)}/>
-            </div>
-          </div>
-        )}
+
         <div className="cv-field">
           <label>Email Address</label>
           <div className="cv-input-wrap">
@@ -438,24 +456,25 @@ function AuthPage({ onAuth }) {
             <input className="cv-input" type="email" placeholder="you@email.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key==="Enter" && handle()}/>
           </div>
         </div>
+
         <div className="cv-field">
           <label>Password</label>
           <div className="cv-input-wrap">
             <svg className="fi" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" fill="none" stroke="#b0b5be" strokeWidth="1.8"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
-            <input className="cv-input" type={show?"text":"password"} placeholder="Min. 6 characters" value={pass} onChange={e => setPass(e.target.value)} onKeyDown={e => e.key==="Enter" && handle()}/>
+            <input className="cv-input" type={show?"text":"password"} placeholder="Enter your password" value={pass} onChange={e => setPass(e.target.value)} onKeyDown={e => e.key==="Enter" && handle()}/>
             <svg className="cv-eye" viewBox="0 0 24 24" onClick={() => setShow(!show)} strokeLinecap="round" strokeLinejoin="round" fill="none" stroke="#b0b5be" strokeWidth="1.8">
               {show ? <><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></> : <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>}
             </svg>
           </div>
         </div>
-        {tab === "login" && (
-          <div className="cv-row">
-            <label className="cv-remember"><input type="checkbox" checked={rem} onChange={e => setRem(e.target.checked)}/><span>Remember Me</span></label>
-            <span className="cv-forgot">Forgot Password?</span>
-          </div>
-        )}
+
+        <div className="cv-row">
+          <label className="cv-remember"><input type="checkbox" checked={rem} onChange={e => setRem(e.target.checked)}/><span>Remember Me</span></label>
+          <span className="cv-forgot">Forgot Password?</span>
+        </div>
+
         <button className="cv-btn" onClick={handle} disabled={busy}>
-          {busy ? <><span className="spin"/>{tab==="login"?"Signing in…":"Creating account…"}</> : (tab==="login"?"Get Started →":"Create Account →")}
+          {busy ? <><span className="spin"/>Signing in…</> : "Sign In →"}
         </button>
       </div>
     </div>
@@ -531,17 +550,15 @@ function FileOptions({ record, onClose, onView, onDownload, onDelete }) {
 
 /* ── UPLOAD SHEET (multi-file) ── */
 function UploadSheet({ onClose, userId, onUploaded, showToast }) {
-  // queue: array of { file, status: "pending"|"uploading"|"done"|"error", error? }
   const [queue,  setQueue]  = useState([]);
   const [busy,   setBusy]   = useState(false);
-  const [current, setCurrent] = useState("");   // currently uploading filename
+  const [current, setCurrent] = useState("");
   const [doneCount, setDoneCount] = useState(0);
 
   const imgRef = useRef(null);
   const vidRef = useRef(null);
   const docRef = useRef(null);
 
-  // Add files to queue (dedup by name+size)
   const addFiles = (fileList) => {
     const incoming = Array.from(fileList);
     setQueue(prev => {
@@ -578,7 +595,6 @@ function UploadSheet({ onClose, userId, onUploaded, showToast }) {
     setCurrent("");
     showToast(`✅ ${done} file${done !== 1 ? "s" : ""} uploaded!`);
     onUploaded();
-    // small delay so user sees all green ticks
     setTimeout(() => onClose(), 700);
   };
 
@@ -597,15 +613,13 @@ function UploadSheet({ onClose, userId, onUploaded, showToast }) {
       <div className="sheet" onClick={e => e.stopPropagation()}>
         <div className="sheet-handle"/>
         <p className="sheet-title">Upload Files</p>
-
-        {/* Pick type buttons */}
         {!busy && (
           <div className="upload-opts" style={{marginBottom: queue.length ? 16 : 0}}>
             {[
-              { label:"Images",    sub:"Select multiple",  color:"teal",   accept:"image/*",   ref:imgRef, multiple:true,  icon:<><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></> },
-              { label:"Videos",    sub:"Select multiple",  color:"violet", accept:"video/*",   ref:vidRef, multiple:true,  icon:<><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></> },
-              { label:"Documents", sub:"PDF, DOC, ZIP…",   color:"blue",   accept:".pdf,.doc,.docx,.txt,.xlsx,.pptx,.zip", ref:docRef, multiple:true, icon:<><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></> },
-              { label:"Any File",  sub:"All types",        color:"rose",   accept:"*",         ref:null,   multiple:true,  icon:<><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></> },
+              { label:"Images",    sub:"Select multiple",  color:"teal",   accept:"image/*",   ref:imgRef, icon:<><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></> },
+              { label:"Videos",    sub:"Select multiple",  color:"violet", accept:"video/*",   ref:vidRef, icon:<><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></> },
+              { label:"Documents", sub:"PDF, DOC, ZIP…",   color:"blue",   accept:".pdf,.doc,.docx,.txt,.xlsx,.pptx,.zip", ref:docRef, icon:<><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></> },
+              { label:"Any File",  sub:"All types",        color:"rose",   accept:"*",         ref:null,   icon:<><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></> },
             ].map((o, i) => (
               <div key={i} className="upload-opt" onClick={() => {
                 if (o.ref) { o.ref.current.click(); return; }
@@ -625,7 +639,6 @@ function UploadSheet({ onClose, userId, onUploaded, showToast }) {
           </div>
         )}
 
-        {/* Upload queue */}
         {queue.length > 0 && (
           <>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
@@ -638,7 +651,6 @@ function UploadSheet({ onClose, userId, onUploaded, showToast }) {
                 </span>
               )}
             </div>
-
             {busy && current && (
               <div className="prog-bar-wrap" style={{marginBottom:12}}>
                 <div className="prog-bar-label">
@@ -650,7 +662,6 @@ function UploadSheet({ onClose, userId, onUploaded, showToast }) {
                 </div>
               </div>
             )}
-
             <div className="queue-list">
               {queue.map((item, i) => (
                 <div className="queue-item" key={i}>
@@ -663,7 +674,6 @@ function UploadSheet({ onClose, userId, onUploaded, showToast }) {
                 </div>
               ))}
             </div>
-
             {!busy && pendingCount > 0 && (
               <button className="upload-all-btn" onClick={uploadAll}>
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -900,16 +910,21 @@ function GalleryBody({ userId, showToast, refreshKey }) {
 }
 
 /* ── PROFILE BODY ── */
+// CHANGED: logout button now opens LogoutConfirm sheet instead of logging out immediately
 function ProfileBody({ user, userId, onLogout, showToast, refreshKey }) {
-  const [profile,   setProfile]   = useState(null);
-  const [fileCount, setFileCount] = useState(0);
+  const [profile,      setProfile]      = useState(null);
+  const [fileCount,    setFileCount]    = useState(0);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+
   useEffect(() => {
     fetchProfile(userId).then(p => setProfile(p));
     fetchFiles(userId).then(f => setFileCount(f.length));
   }, [userId, refreshKey]);
+
   const usedPct = profile ? Math.min((profile.storage_used / profile.storage_limit) * 100, 100).toFixed(1) : 0;
   const displayName = profile?.full_name || user?.user_metadata?.full_name || user?.email?.split("@")[0] || "User";
   const nameParts = displayName.trim().split(" ");
+
   return (
     <div className="home-page prof-page">
       <div className="prof-hdr">
@@ -950,8 +965,19 @@ function ProfileBody({ user, userId, onLogout, showToast, refreshKey }) {
             </div>
           ))}
         </div>
-        <div className="logout-row"><button className="logout-btn" onClick={onLogout}>Log Out</button></div>
+        {/* CHANGED: triggers confirmation sheet instead of logging out directly */}
+        <div className="logout-row">
+          <button className="logout-btn" onClick={() => setShowLogoutConfirm(true)}>Log Out</button>
+        </div>
       </div>
+
+      {/* CHANGED: logout confirmation sheet */}
+      {showLogoutConfirm && (
+        <LogoutConfirm
+          onCancel={() => setShowLogoutConfirm(false)}
+          onConfirm={onLogout}
+        />
+      )}
     </div>
   );
 }
