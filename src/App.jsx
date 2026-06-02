@@ -54,32 +54,81 @@ function passwordStrength(pw) {
 }
 
 /* ── STORAGE OPS ── */
-async function uploadFile(file, userId) {
-  const bucket = getBucket(file);
-  const ext    = file.name.split(".").pop();
-  const path   = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-  const { error: upErr } = await supabase.storage.from(bucket).upload(path, file, { cacheControl: "3600", upsert: false });
-  if (upErr) throw upErr;
-  const { error: dbErr } = await supabase.from("files").insert({
-    user_id: userId, name: file.name, original_name: file.name,
-    bucket, storage_path: path, size: file.size, mime_type: file.type, category: getCategory(file),
+async function uploadToGDrive(file, userId) {
+  // Call your edge function
+  const form = new FormData();
+  form.append("file", file);
+
+  const { data: { session } } = await supabase.auth.getSession();
+  const res = await fetch(
+    `${SUPABASE_URL}/functions/v1/gdrive-upload`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${session.access_token}` },
+      body: form,
+    }
+  );
+  const drive = await res.json();
+
+  // Save reference to Supabase DB
+  const { error } = await supabase.from("files").insert({
+    user_id: userId,
+    name: file.name,
+    original_name: file.name,
+    bucket: "gdrive",
+    storage_path: drive.gdrive_file_id, // reuse storage_path as file ID
+    size: file.size,
+    mime_type: file.type,
+    category: getCategory(file),
+    storage_provider: "gdrive",
+    gdrive_file_id: drive.gdrive_file_id,
+    gdrive_web_view_link: drive.gdrive_web_view_link,
+    gdrive_download_link: drive.gdrive_download_link,
   });
-  if (dbErr) throw dbErr;
-  // update storage_used
-  const { data: prof } = await supabase.from("profiles").select("storage_used").eq("id", userId).single();
+  if (error) throw error;
+
+  // Update storage_used in profiles
+  const { data: prof } = await supabase.from("profiles")
+    .select("storage_used,gdrive_used").eq("id", userId).single();
   if (prof) {
-    await supabase.from("profiles").update({ storage_used: (prof.storage_used || 0) + file.size }).eq("id", userId);
+    await supabase.from("profiles").update({
+      storage_used: (prof.storage_used || 0) + file.size,
+      gdrive_used: (prof.gdrive_used || 0) + file.size,
+    }).eq("id", userId);
   }
 }
+async function deleteGDriveFile(fileId, accessToken) {
+  await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}
 async function getFileUrl(record) {
+  if (record.storage_provider === "gdrive") {
+    return record.gdrive_download_link; // already public
+  }
+  // existing Supabase logic...
   if (record.bucket === "images") {
     const { data } = supabase.storage.from("images").getPublicUrl(record.storage_path);
     return data.publicUrl;
   }
-  const { data, error } = await supabase.storage.from(record.bucket).createSignedUrl(record.storage_path, 3600);
+  const { data, error } = await supabase.storage.from(record.bucket)
+    .createSignedUrl(record.storage_path, 3600);
   if (error) throw error;
   return data.signedUrl;
 }
+const [provider, setProvider] = useState("supabase"); // or "gdrive"
+
+// In the UI, before the upload options:
+<div style={{display:"flex",gap:8,marginBottom:16}}>
+  {["supabase","gdrive"].map(p => (
+    <span key={p}
+      className={`filter-chip ${provider===p?"active":""}`}
+      onClick={() => setProvider(p)}>
+      {p === "supabase" ? "☁️ Supabase" : "📁 Google Drive"}
+    </span>
+  ))}
+</div>
 async function downloadFile(record) {
   const url = await getFileUrl(record);
   const a = document.createElement("a");
