@@ -40,6 +40,13 @@ function timeAgo(ts) {
   if (h < 24) return h + "h ago";
   return Math.floor(h / 24) + "d ago";
 }
+function generateId() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
 
 /* ── STORAGE ── */
 async function uploadFile(file, userId) {
@@ -100,7 +107,6 @@ async function adminUpdateProfile(id, updates) {
   if (error) throw error;
 }
 async function adminDeleteProfile(id) {
-  // Delete all files for user first
   const { data: files } = await supabase.from("files").select("*").eq("user_id", id);
   if (files && files.length > 0) {
     for (const f of files) {
@@ -111,13 +117,43 @@ async function adminDeleteProfile(id) {
   const { error } = await supabase.from("profiles").delete().eq("id", id);
   if (error) throw error;
 }
-async function adminCreateProfile(payload) {
-  // payload: { full_name, email, storage_limit, is_admin }
-  // Creates auth user via admin API — not available with anon key.
-  // Instead we insert a profile stub (user must already exist or be invited).
-  // In practice you'd use a Supabase Edge Function for full user creation.
-  const { error } = await supabase.from("profiles").insert(payload);
-  if (error) throw error;
+
+/**
+ * Create a new user via Supabase Auth signUp.
+ * This creates the auth user AND inserts a profile row.
+ * The new user will receive a confirmation email; after confirming they can log in.
+ */
+async function adminCreateUser({ full_name, email, password, storage_limit, is_admin }) {
+  // Step 1: Sign up via Supabase Auth (creates auth.users entry)
+  const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: { full_name },
+      // Skip email confirmation redirect if you have it configured
+      emailRedirectTo: window.location.origin,
+    },
+  });
+
+  if (signUpErr) throw signUpErr;
+
+  const newUserId = signUpData?.user?.id;
+  if (!newUserId) throw new Error("User creation failed — no user ID returned.");
+
+  // Step 2: Upsert the profile row (may already exist from DB trigger, so upsert)
+  const { error: profileErr } = await supabase.from("profiles").upsert({
+    id: newUserId,
+    full_name,
+    email,
+    storage_limit,
+    storage_used: 0,
+    is_admin: is_admin || false,
+    is_disabled: false,
+  }, { onConflict: "id" });
+
+  if (profileErr) throw profileErr;
+
+  return newUserId;
 }
 
 /* ── STYLES ── */
@@ -166,6 +202,7 @@ html,body{height:100%;overflow-x:hidden}
 .cv-btn:active{transform:scale(0.98)}
 .cv-btn:disabled{opacity:0.6;cursor:not-allowed}
 .auth-err{background:#fff1f2;border:1.5px solid #fecdd3;color:#e11d48;border-radius:12px;padding:clamp(10px,3vw,12px) clamp(12px,3.5vw,14px);font-size:clamp(11px,3vw,13px);font-weight:500;margin-bottom:14px;text-align:center}
+.auth-success{background:#f0fdf4;border:1.5px solid #a7f3d0;color:#059669;border-radius:12px;padding:clamp(10px,3vw,12px) clamp(12px,3.5vw,14px);font-size:clamp(11px,3vw,13px);font-weight:500;margin-bottom:14px;text-align:center}
 
 /* HOME */
 .home-page{min-height:100svh;display:flex;flex-direction:column;background:var(--bg)}
@@ -264,7 +301,7 @@ html,body{height:100%;overflow-x:hidden}
 
 /* MODALS */
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:200;display:flex;align-items:flex-end;backdrop-filter:blur(3px);animation:fadeIn 0.2s ease}
-.sheet{background:var(--white);border-radius:clamp(20px,6vw,28px) clamp(20px,6vw,28px) 0 0;padding:clamp(20px,6vw,28px) clamp(18px,5vw,26px) clamp(28px,8vw,40px);width:100%;animation:slideUp 0.25s ease;max-height:90svh;overflow-y:auto}
+.sheet{background:var(--white);border-radius:clamp(20px,6vw,28px) clamp(20px,6vw,28px) 0 0;padding:clamp(20px,6vw,28px) clamp(18px,5vw,26px) clamp(28px,8vw,40px);width:100%;animation:slideUp 0.25s ease;max-height:92svh;overflow-y:auto}
 @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 .sheet-handle{width:34px;height:4px;background:var(--border);border-radius:99px;margin:0 auto clamp(16px,4.5vw,22px)}
@@ -397,8 +434,6 @@ html,body{height:100%;overflow-x:hidden}
 /* ═══════════════════════════════════
    ADMIN PANEL STYLES
    ═══════════════════════════════════ */
-
-/* Admin header band */
 .admin-page{min-height:100svh;display:flex;flex-direction:column;background:var(--bg);padding-bottom:clamp(90px,22vw,110px)}
 .admin-hdr{background:linear-gradient(150deg,#6366f1 0%,#4f46e5 55%,#4338ca 100%);padding:clamp(36px,10vw,52px) clamp(18px,5vw,28px) clamp(28px,7vw,38px);position:relative;overflow:hidden}
 .admin-hdr::before{content:'';position:absolute;width:clamp(180px,65vw,300px);height:clamp(180px,65vw,300px);border-radius:50%;border:2px solid rgba(255,255,255,0.1);top:-20%;right:-10%}
@@ -411,23 +446,15 @@ html,body{height:100%;overflow-x:hidden}
 .admin-badge-sub{font-size:clamp(10px,2.5vw,12px);color:rgba(255,255,255,0.65)}
 .admin-logout-btn{width:clamp(32px,9vw,38px);height:clamp(32px,9vw,38px);background:rgba(255,255,255,0.15);border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer}
 .admin-logout-btn svg{width:55%;height:55%;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-
-/* Admin stat cards */
 .admin-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(8px,2.5vw,12px);position:relative;z-index:2;margin-bottom:0}
 .admin-stat{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);border-radius:clamp(12px,3.5vw,16px);padding:clamp(10px,3vw,14px) clamp(8px,2.5vw,12px);text-align:center;backdrop-filter:blur(8px)}
 .astat-val{font-family:var(--nunito);font-size:clamp(16px,5vw,22px);font-weight:900;color:#fff}
 .astat-lbl{font-size:clamp(9px,2.4vw,11px);color:rgba(255,255,255,0.7);margin-top:2px}
-
-/* Admin body */
 .admin-body{background:var(--white);border-radius:clamp(20px,6vw,28px) clamp(20px,6vw,28px) 0 0;margin-top:clamp(-14px,-4vw,-18px);padding:clamp(18px,5vw,26px) clamp(16px,5vw,24px);flex:1;box-shadow:0 -6px 24px rgba(0,0,0,0.05)}
-
-/* Tab switcher */
 .admin-tabs{display:flex;gap:8px;background:#f5f6f8;border-radius:14px;padding:4px;margin-bottom:clamp(16px,4.5vw,22px)}
 .admin-tab{flex:1;padding:clamp(8px,2.5vw,10px) 8px;border-radius:11px;border:none;background:transparent;font-family:var(--nunito);font-size:clamp(12px,3.2vw,13px);font-weight:700;color:var(--muted);cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:6px}
 .admin-tab.active{background:var(--white);color:var(--admin);box-shadow:0 2px 8px rgba(0,0,0,0.08)}
 .admin-tab svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-
-/* User card */
 .user-card{background:#fafafa;border:1.5px solid var(--border);border-radius:clamp(14px,4vw,18px);padding:clamp(12px,3.5vw,16px);margin-bottom:clamp(10px,3vw,12px);transition:border-color 0.2s}
 .user-card.disabled-user{opacity:0.55;background:#f9fafb}
 .user-card-top{display:flex;align-items:center;gap:clamp(10px,3vw,13px);margin-bottom:10px}
@@ -453,8 +480,6 @@ html,body{height:100%;overflow-x:hidden}
 .ua-btn.enable{background:#dcfce7;color:#059669;border-color:#a7f3d0}
 .ua-btn.del{background:#fff1f2;color:#e11d48;border-color:#fecdd3}
 .ua-btn svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-
-/* Admin file row */
 .admin-file-row{display:flex;align-items:center;gap:clamp(10px,3vw,13px);padding:clamp(10px,3vw,13px) 0;border-bottom:1px solid #f3f4f6}
 .admin-file-row:last-child{border-bottom:none}
 .admin-file-owner{font-size:clamp(9px,2.4vw,11px);color:var(--admin);font-weight:600;margin-top:2px}
@@ -462,11 +487,22 @@ html,body{height:100%;overflow-x:hidden}
 .admin-del-btn:hover{background:#fee2e2}
 .admin-del-btn svg{width:14px;height:14px;stroke:#e11d48;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 
-/* Edit / Create sheet */
+/* FORM FIELDS */
 .form-field{margin-bottom:clamp(12px,3.5vw,16px)}
 .form-field label{display:block;font-size:clamp(11px,3vw,12px);font-weight:600;color:var(--muted);margin-bottom:5px;padding-left:2px}
 .form-input{width:100%;padding:clamp(11px,3.2vw,13px) clamp(13px,3.8vw,15px);border:1.5px solid var(--border);border-radius:12px;font-size:clamp(13px,3.4vw,14px);font-family:var(--dm);color:var(--text);background:#f9fafb;outline:none;transition:border-color 0.2s,box-shadow 0.2s}
 .form-input:focus{border-color:var(--admin);box-shadow:0 0 0 3px rgba(99,102,241,0.12);background:var(--white)}
+
+/* ID display field */
+.form-id-box{width:100%;padding:clamp(10px,3vw,12px) clamp(13px,3.8vw,15px);border:1.5px dashed var(--border);border-radius:12px;font-size:clamp(10px,2.6vw,12px);font-family:monospace;color:var(--muted);background:#f9fafb;word-break:break-all;line-height:1.5;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.form-id-box span{flex:1;word-break:break-all}
+.copy-id-btn{flex-shrink:0;padding:4px 10px;background:var(--admin-light);color:var(--admin);border:1px solid var(--admin-border);border-radius:8px;font-size:11px;font-weight:700;font-family:var(--nunito);cursor:pointer;white-space:nowrap}
+.copy-id-btn:hover{background:var(--admin-border)}
+
+.form-input-wrap{position:relative;display:flex;align-items:center}
+.form-input-wrap .form-input{padding-right:44px}
+.form-eye{position:absolute;right:14px;cursor:pointer;width:16px;height:16px;stroke:#b0b5be;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
 .form-toggle{display:flex;align-items:center;justify-content:space-between;padding:clamp(11px,3.2vw,13px) clamp(13px,3.8vw,15px);border:1.5px solid var(--border);border-radius:12px;background:#f9fafb;cursor:pointer}
 .form-toggle-label{font-size:clamp(13px,3.4vw,14px);color:var(--text);font-weight:500}
 .toggle-switch{width:42px;height:24px;border-radius:99px;background:#e5e7eb;position:relative;transition:background 0.2s;flex-shrink:0}
@@ -478,8 +514,18 @@ html,body{height:100%;overflow-x:hidden}
 .admin-btn:active{transform:scale(0.98)}
 .admin-btn:disabled{opacity:0.6;cursor:not-allowed}
 .admin-err{background:#fff1f2;border:1.5px solid #fecdd3;color:#e11d48;border-radius:12px;padding:10px 14px;font-size:clamp(11px,3vw,13px);font-weight:500;margin-bottom:14px;text-align:center}
+.admin-success{background:#f0fdf4;border:1.5px solid #a7f3d0;color:#059669;border-radius:12px;padding:10px 14px;font-size:clamp(11px,3vw,13px);font-weight:500;margin-bottom:14px;text-align:center}
 .confirm-danger-btn{width:100%;padding:clamp(13px,3.8vw,15px);background:linear-gradient(135deg,#FF6B6B,#e11d48);border:none;border-radius:99px;font-family:var(--nunito);font-size:clamp(14px,4vw,15px);font-weight:700;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 6px 18px rgba(225,29,72,0.3);margin-top:4px}
 .confirm-danger-btn:disabled{opacity:0.6;cursor:not-allowed}
+
+/* Password strength */
+.pw-strength{margin-top:6px;display:flex;gap:4px;align-items:center}
+.pw-bar{flex:1;height:3px;border-radius:99px;background:#e5e7eb;transition:background 0.3s}
+.pw-bar.weak{background:#f87171}
+.pw-bar.fair{background:#fb923c}
+.pw-bar.good{background:#34d399}
+.pw-bar.strong{background:#059669}
+.pw-label{font-size:10px;color:var(--muted);white-space:nowrap}
 `;
 
 /* ── ICONS ── */
@@ -491,6 +537,19 @@ const FileThumb = ({ type }) => {
   if (type === "vid") return <svg viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>;
   return <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>;
 };
+
+/* ── PASSWORD STRENGTH ── */
+function passwordStrength(pw) {
+  if (!pw) return { score: 0, label: "" };
+  let score = 0;
+  if (pw.length >= 8)  score++;
+  if (pw.length >= 12) score++;
+  if (/[A-Z]/.test(pw)) score++;
+  if (/[0-9]/.test(pw)) score++;
+  if (/[^A-Za-z0-9]/.test(pw)) score++;
+  const labels = ["","Weak","Fair","Good","Strong","Strong"];
+  return { score, label: labels[score] || "Strong" };
+}
 
 /* ── LOGOUT CONFIRM ── */
 function LogoutConfirm({ onCancel, onConfirm }) {
@@ -799,34 +858,72 @@ function ImageThumb({ record }) {
    ADMIN PANEL
    ═══════════════════════════════════ */
 
-/* Edit User Sheet */
+/* ── CREATE / EDIT USER SHEET ── */
 function EditUserSheet({ profile, onClose, onSaved, showToast }) {
+  const isNew = !profile;
+
+  // Pre-generate a UUID for display when creating
+  const [generatedId]     = useState(() => isNew ? generateId() : profile.id);
   const [name,    setName]    = useState(profile?.full_name || "");
+  const [email,   setEmail]   = useState(profile?.email || "");
+  const [pass,    setPass]    = useState("");
+  const [showPw,  setShowPw]  = useState(false);
   const [limit,   setLimit]   = useState(profile?.storage_limit ? (profile.storage_limit / 1024 ** 3).toFixed(0) : "5");
   const [isAdmin, setIsAdmin] = useState(profile?.is_admin || false);
   const [busy,    setBusy]    = useState(false);
   const [err,     setErr]     = useState("");
+  const [success, setSuccess] = useState("");
+  const [copied,  setCopied]  = useState(false);
 
-  const isNew = !profile;
+  const pwStrength = passwordStrength(pass);
+
+  const copyId = async () => {
+    try {
+      await navigator.clipboard.writeText(generatedId);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {}
+  };
 
   const handleSave = async () => {
-    setErr("");
+    setErr(""); setSuccess("");
+
     if (!name.trim()) { setErr("Full name is required."); return; }
+
+    if (isNew) {
+      if (!email.trim()) { setErr("Email address is required."); return; }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setErr("Enter a valid email address."); return; }
+      if (!pass) { setErr("Password is required."); return; }
+      if (pass.length < 6) { setErr("Password must be at least 6 characters."); return; }
+    }
+
     const limitBytes = parseFloat(limit) * 1024 ** 3;
     if (isNaN(limitBytes) || limitBytes <= 0) { setErr("Storage limit must be a positive number (GB)."); return; }
+
     setBusy(true);
     try {
       if (isNew) {
-        // For new profile stubs — in a real app you'd call a Supabase Edge Function
-        // to create the auth user + profile atomically.
-        await adminCreateProfile({ full_name: name.trim(), storage_limit: limitBytes, is_admin: isAdmin });
-        showToast("✅ Profile created");
+        await adminCreateUser({
+          full_name: name.trim(),
+          email: email.trim(),
+          password: pass,
+          storage_limit: limitBytes,
+          is_admin: isAdmin,
+        });
+        setSuccess("✅ User created! They may need to verify their email before logging in.");
+        showToast("✅ User created successfully");
+        onSaved();
+        setTimeout(() => onClose(), 2000);
       } else {
-        await adminUpdateProfile(profile.id, { full_name: name.trim(), storage_limit: limitBytes, is_admin: isAdmin });
+        await adminUpdateProfile(profile.id, {
+          full_name: name.trim(),
+          storage_limit: limitBytes,
+          is_admin: isAdmin,
+        });
         showToast("✅ Profile updated");
+        onSaved();
+        onClose();
       }
-      onSaved();
-      onClose();
     } catch (e) {
       setErr(e.message || "Something went wrong.");
     } finally { setBusy(false); }
@@ -836,28 +933,127 @@ function EditUserSheet({ profile, onClose, onSaved, showToast }) {
     <div className="overlay" onClick={!busy ? onClose : undefined}>
       <div className="sheet" onClick={e => e.stopPropagation()}>
         <div className="sheet-handle"/>
-        <p className="sheet-title">{isNew ? "Create User" : "Edit User"}</p>
-        {err && <div className="admin-err">{err}</div>}
+        <p className="sheet-title">{isNew ? "Create New User" : "Edit User"}</p>
+
+        {err     && <div className="admin-err">{err}</div>}
+        {success && <div className="admin-success">{success}</div>}
+
+        {/* Auto-generated ID (show for new users) */}
+        {isNew && (
+          <div className="form-field">
+            <label>Auto-Generated User ID</label>
+            <div className="form-id-box">
+              <span>{generatedId}</span>
+              <button className="copy-id-btn" onClick={copyId}>{copied ? "Copied!" : "Copy"}</button>
+            </div>
+            <p style={{fontSize:"clamp(9px,2.4vw,11px)",color:"var(--muted)",marginTop:5,paddingLeft:2}}>
+              This UUID is assigned by Supabase Auth upon account creation.
+            </p>
+          </div>
+        )}
+
+        {/* Full Name */}
         <div className="form-field">
-          <label>Full Name</label>
-          <input className="form-input" value={name} onChange={e => setName(e.target.value)} placeholder="Jane Doe"/>
+          <label>Full Name <span style={{color:"#e11d48"}}>*</span></label>
+          <input
+            className="form-input"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="e.g. Jane Dela Cruz"
+          />
         </div>
 
-    
-
+        {/* Email — required for new, read-only for edit */}
         <div className="form-field">
-          <label>Storage Limit (GB)</label>
-          <input className="form-input" type="number" min="1" max="1000" value={limit} onChange={e => setLimit(e.target.value)} placeholder="5"/>
+          <label>Email Address {isNew && <span style={{color:"#e11d48"}}>*</span>}</label>
+          {isNew ? (
+            <input
+              className="form-input"
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              placeholder="user@example.com"
+              autoComplete="off"
+            />
+          ) : (
+            <div className="form-id-box" style={{borderStyle:"solid",background:"#f3f4f6"}}>
+              <span style={{fontSize:"clamp(12px,3vw,13px)",fontFamily:"var(--dm)",color:"var(--text)"}}>
+                {profile?.email || "—"}
+              </span>
+              <span style={{fontSize:10,color:"var(--muted)",whiteSpace:"nowrap"}}>Read-only</span>
+            </div>
+          )}
         </div>
+
+        {/* Password — only for new users */}
+        {isNew && (
+          <div className="form-field">
+            <label>Password <span style={{color:"#e11d48"}}>*</span></label>
+            <div className="form-input-wrap">
+              <input
+                className="form-input"
+                type={showPw ? "text" : "password"}
+                value={pass}
+                onChange={e => setPass(e.target.value)}
+                placeholder="Min. 6 characters"
+                autoComplete="new-password"
+              />
+              <svg className="form-eye" viewBox="0 0 24 24" onClick={() => setShowPw(v => !v)}>
+                {showPw
+                  ? <><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></>
+                  : <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>}
+              </svg>
+            </div>
+            {pass && (
+              <div className="pw-strength">
+                {[1,2,3,4].map(i => (
+                  <div key={i} className={`pw-bar ${
+                    pwStrength.score >= 5 ? "strong" :
+                    pwStrength.score >= 3 ? "good" :
+                    pwStrength.score >= 2 ? "fair" :
+                    pwStrength.score >= 1 ? "weak" : ""
+                  } ${i > Math.ceil(pwStrength.score * 4/5) ? "" : ""}`}
+                  style={{background: i <= Math.ceil(pwStrength.score * 4/5)
+                    ? pwStrength.score >= 5 ? "#059669"
+                    : pwStrength.score >= 3 ? "#34d399"
+                    : pwStrength.score >= 2 ? "#fb923c"
+                    : "#f87171"
+                    : "#e5e7eb"
+                  }}/>
+                ))}
+                <span className="pw-label">{pwStrength.label}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Storage Limit */}
+        <div className="form-field">
+          <label>Storage Limit (GB) <span style={{color:"#e11d48"}}>*</span></label>
+          <input
+            className="form-input"
+            type="number"
+            min="1"
+            max="1000"
+            value={limit}
+            onChange={e => setLimit(e.target.value)}
+            placeholder="5"
+          />
+        </div>
+
+        {/* Admin Toggle */}
         <div className="form-field">
           <label>Admin Privileges</label>
           <div className="form-toggle" onClick={() => setIsAdmin(v => !v)}>
-            <span className="form-toggle-label">{isAdmin ? "Admin account" : "Regular user"}</span>
+            <span className="form-toggle-label">{isAdmin ? "✓ Admin account" : "Regular user"}</span>
             <div className={`toggle-switch ${isAdmin?"on":""}`}><div className="toggle-knob"/></div>
           </div>
         </div>
+
         <button className="admin-btn" onClick={handleSave} disabled={busy}>
-          {busy ? <><span className="spin" style={{width:16,height:16,borderWidth:2}}/>{isNew?"Creating…":"Saving…"}</> : (isNew ? "Create Profile" : "Save Changes")}
+          {busy
+            ? <><span className="spin" style={{width:16,height:16,borderWidth:2}}/>{isNew?"Creating…":"Saving…"}</>
+            : isNew ? "Create Account" : "Save Changes"}
         </button>
       </div>
     </div>
@@ -891,7 +1087,7 @@ function AdminUsersTab({ showToast, currentUserId }) {
   const [profiles, setProfiles] = useState([]);
   const [loading,  setLoading]  = useState(true);
   const [query,    setQuery]    = useState("");
-  const [editTarget, setEditTarget] = useState(undefined); // undefined=closed, null=create, obj=edit
+  const [editTarget, setEditTarget] = useState(undefined);
   const [deleteTarget, setDeleteTarget] = useState(null);
 
   const load = useCallback(async () => {
@@ -929,12 +1125,13 @@ function AdminUsersTab({ showToast, currentUserId }) {
 
   return (
     <>
-      <div style={{display:"flex",gap:10,marginBottom:clampVal(14,4,20)}}>
+      <div style={{display:"flex",gap:10,marginBottom:"clamp(14px,4vw,20px)"}}>
         <div className="search-bar" style={{flex:1}}>
           <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           <input placeholder="Search users…" value={query} onChange={e => setQuery(e.target.value)}/>
         </div>
-        <button style={{flexShrink:0,padding:"0 14px",height:"clamp(42px,11vw,48px)",background:"linear-gradient(135deg,var(--admin),var(--admin2))",border:"none",borderRadius:12,color:"#fff",fontFamily:"var(--nunito)",fontSize:"clamp(12px,3.2vw,13px)",fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}
+        <button
+          style={{flexShrink:0,padding:"0 14px",height:"44px",background:"linear-gradient(135deg,var(--admin),var(--admin2))",border:"none",borderRadius:12,color:"#fff",fontFamily:"var(--nunito)",fontSize:"clamp(12px,3.2vw,13px)",fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}
           onClick={() => setEditTarget(null)}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           New User
@@ -1012,9 +1209,6 @@ function AdminUsersTab({ showToast, currentUserId }) {
     </>
   );
 }
-
-// tiny helper to satisfy the inline style string
-function clampVal(min, mid, max) { return `clamp(${min}px,${mid}vw,${max}px)`; }
 
 /* Admin Files Tab */
 function AdminFilesTab({ showToast }) {
@@ -1438,7 +1632,6 @@ function HomePage({ user, onLogout, isAdmin }) {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
-  // If admin: last nav item = Admin (indigo), else Profile (standard)
   const navL = [
     { id:"home",  label:"Home",  icon:<><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></> },
     { id:"files", label:"Files", icon:<><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></> },
@@ -1450,7 +1643,6 @@ function HomePage({ user, onLogout, isAdmin }) {
       : { id:"profile", label:"Profile", icon:<><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></> },
   ];
 
-  const isAdminNav = nav === "admin";
   const showHeader = nav !== "profile" && nav !== "admin";
 
   return (
