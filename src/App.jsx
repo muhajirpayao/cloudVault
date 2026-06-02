@@ -1739,6 +1739,7 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
+
   const handleLogout = async () => { await supabase.auth.signOut(); setUser(null); setIsAdmin(false); };
 
   if (user === undefined) {
