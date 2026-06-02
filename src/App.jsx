@@ -5,6 +5,7 @@ const SUPABASE_URL  = "https://oynuqcbqcxfoalmlxiwx.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im95bnVxY2JxY3hmb2FsbWx4aXd4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMzE0ODgsImV4cCI6MjA5NTkwNzQ4OH0.04xWAzu6W_5inGAppDvRlDqrPoOOqbfSsAOdHyuAUEc";
 const supabase      = createClient(SUPABASE_URL, SUPABASE_ANON);
 
+/* ── HELPERS ── */
 function getBucket(file) {
   const m = file.type;
   if (m.startsWith("image/")) return "images";
@@ -40,15 +41,19 @@ function timeAgo(ts) {
   if (h < 24) return h + "h ago";
   return Math.floor(h / 24) + "d ago";
 }
-function generateId() {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-    const r = Math.random() * 16 | 0;
-    const v = c === 'x' ? r : (r & 0x3 | 0x8);
-    return v.toString(16);
-  });
+function passwordStrength(pw) {
+  if (!pw) return { score: 0, label: "" };
+  let score = 0;
+  if (pw.length >= 8)  score++;
+  if (pw.length >= 12) score++;
+  if (/[A-Z]/.test(pw)) score++;
+  if (/[0-9]/.test(pw)) score++;
+  if (/[^A-Za-z0-9]/.test(pw)) score++;
+  const labels = ["","Weak","Fair","Good","Strong","Strong"];
+  return { score, label: labels[score] || "Strong" };
 }
 
-/* ── STORAGE ── */
+/* ── STORAGE OPS ── */
 async function uploadFile(file, userId) {
   const bucket = getBucket(file);
   const ext    = file.name.split(".").pop();
@@ -60,6 +65,11 @@ async function uploadFile(file, userId) {
     bucket, storage_path: path, size: file.size, mime_type: file.type, category: getCategory(file),
   });
   if (dbErr) throw dbErr;
+  // update storage_used
+  const { data: prof } = await supabase.from("profiles").select("storage_used").eq("id", userId).single();
+  if (prof) {
+    await supabase.from("profiles").update({ storage_used: (prof.storage_used || 0) + file.size }).eq("id", userId);
+  }
 }
 async function getFileUrl(record) {
   if (record.bucket === "images") {
@@ -78,6 +88,12 @@ async function downloadFile(record) {
 async function deleteFile(record) {
   await supabase.storage.from(record.bucket).remove([record.storage_path]);
   await supabase.from("files").delete().eq("id", record.id);
+  // update storage_used
+  const { data: prof } = await supabase.from("profiles").select("storage_used").eq("id", record.user_id).single();
+  if (prof) {
+    const newUsed = Math.max(0, (prof.storage_used || 0) - (record.size || 0));
+    await supabase.from("profiles").update({ storage_used: newUsed }).eq("id", record.user_id);
+  }
 }
 async function fetchFiles(userId, category) {
   let q = supabase.from("files").select("*").eq("user_id", userId).order("created_at", { ascending: false });
@@ -91,7 +107,7 @@ async function fetchProfile(userId) {
   return data;
 }
 
-/* ── ADMIN DATA ── */
+/* ── ADMIN OPS ── */
 async function adminFetchAllProfiles() {
   const { data, error } = await supabase.from("profiles").select("*").order("created_at", { ascending: false });
   if (error) throw error;
@@ -114,49 +130,35 @@ async function adminDeleteProfile(id) {
     }
     await supabase.from("files").delete().eq("user_id", id);
   }
-  const { error } = await supabase.from("profiles").delete().eq("id", id);
-  if (error) throw error;
+  await supabase.from("profiles").delete().eq("id", id);
+  // NOTE: this removes the profile row. The auth.users entry persists until
+  // deleted from Supabase dashboard or via service_role key.
+  // To fully block login, we rely on is_disabled flag checked at auth time.
 }
 
-/**
- * Create a new user via Supabase Auth signUp.
- * This creates the auth user AND inserts a profile row.
- * The new user will receive a confirmation email; after confirming they can log in.
- */
+// Admin creates user: uses signUp (anon key limitation).
+// Requires "Disable email confirmations" in Supabase Auth → Settings → Email.
 async function adminCreateUser({ full_name, email, password, storage_limit, is_admin }) {
-  // Step 1: Sign up via Supabase Auth (creates auth.users entry)
   const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
     email,
     password,
-    options: {
-      data: { full_name },
-      // Skip email confirmation redirect if you have it configured
-      emailRedirectTo: window.location.origin,
-    },
+    options: { data: { full_name }, emailRedirectTo: window.location.origin },
   });
-
   if (signUpErr) throw signUpErr;
-
   const newUserId = signUpData?.user?.id;
   if (!newUserId) throw new Error("User creation failed — no user ID returned.");
-
-  // Step 2: Upsert the profile row (may already exist from DB trigger, so upsert)
   const { error: profileErr } = await supabase.from("profiles").upsert({
-    id: newUserId,
-    full_name,
-    email,
-    storage_limit,
-    storage_used: 0,
-    is_admin: is_admin || false,
-    is_disabled: false,
+    id: newUserId, full_name, email,
+    storage_limit, storage_used: 0,
+    is_admin: is_admin || false, is_disabled: false,
   }, { onConflict: "id" });
-
   if (profileErr) throw profileErr;
-
   return newUserId;
 }
 
-/* ── STYLES ── */
+/* ══════════════════════════════════
+   STYLES
+══════════════════════════════════ */
 const styles = `
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=DM+Sans:wght@300;400;500;600&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -380,6 +382,7 @@ html,body{height:100%;overflow-x:hidden}
 .prof-hdr{background:linear-gradient(150deg,#00D4B8 0%,#00B5C8 55%,#0094B0 100%);padding:clamp(36px,10vw,52px) clamp(18px,5vw,28px) clamp(30px,8vw,44px);text-align:center;position:relative}
 .prof-avatar{width:clamp(64px,18vw,82px);height:clamp(64px,18vw,82px);background:rgba(255,255,255,0.22);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto clamp(10px,3vw,14px);border:2.5px solid rgba(255,255,255,0.5)}
 .prof-avatar svg{width:55%;height:55%;stroke:#fff;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.prof-avatar-initials{font-family:var(--nunito);font-size:clamp(20px,6vw,28px);font-weight:900;color:#fff;line-height:1}
 .prof-name{font-family:var(--nunito);font-size:clamp(18px,5.5vw,24px);font-weight:900;color:#fff;margin-bottom:4px}
 .prof-email{font-size:clamp(11px,3vw,13px);color:rgba(255,255,255,0.75)}
 .prof-body{background:var(--white);border-radius:clamp(20px,6vw,28px) clamp(20px,6vw,28px) 0 0;margin-top:clamp(-14px,-4vw,-18px);padding:clamp(20px,5.5vw,28px) clamp(16px,5vw,24px)}
@@ -431,9 +434,7 @@ html,body{height:100%;overflow-x:hidden}
 .page-loader-inner{display:flex;flex-direction:column;align-items:center;gap:16px}
 .page-loader-inner span{font-family:var(--nunito);font-size:15px;font-weight:700;color:var(--teal2)}
 
-/* ═══════════════════════════════════
-   ADMIN PANEL STYLES
-   ═══════════════════════════════════ */
+/* ADMIN */
 .admin-page{min-height:100svh;display:flex;flex-direction:column;background:var(--bg);padding-bottom:clamp(90px,22vw,110px)}
 .admin-hdr{background:linear-gradient(150deg,#6366f1 0%,#4f46e5 55%,#4338ca 100%);padding:clamp(36px,10vw,52px) clamp(18px,5vw,28px) clamp(28px,7vw,38px);position:relative;overflow:hidden}
 .admin-hdr::before{content:'';position:absolute;width:clamp(180px,65vw,300px);height:clamp(180px,65vw,300px);border-radius:50%;border:2px solid rgba(255,255,255,0.1);top:-20%;right:-10%}
@@ -446,7 +447,7 @@ html,body{height:100%;overflow-x:hidden}
 .admin-badge-sub{font-size:clamp(10px,2.5vw,12px);color:rgba(255,255,255,0.65)}
 .admin-logout-btn{width:clamp(32px,9vw,38px);height:clamp(32px,9vw,38px);background:rgba(255,255,255,0.15);border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer}
 .admin-logout-btn svg{width:55%;height:55%;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.admin-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(8px,2.5vw,12px);position:relative;z-index:2;margin-bottom:0}
+.admin-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(8px,2.5vw,12px);position:relative;z-index:2}
 .admin-stat{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);border-radius:clamp(12px,3.5vw,16px);padding:clamp(10px,3vw,14px) clamp(8px,2.5vw,12px);text-align:center;backdrop-filter:blur(8px)}
 .astat-val{font-family:var(--nunito);font-size:clamp(16px,5vw,22px);font-weight:900;color:#fff}
 .astat-lbl{font-size:clamp(9px,2.4vw,11px);color:rgba(255,255,255,0.7);margin-top:2px}
@@ -492,17 +493,13 @@ html,body{height:100%;overflow-x:hidden}
 .form-field label{display:block;font-size:clamp(11px,3vw,12px);font-weight:600;color:var(--muted);margin-bottom:5px;padding-left:2px}
 .form-input{width:100%;padding:clamp(11px,3.2vw,13px) clamp(13px,3.8vw,15px);border:1.5px solid var(--border);border-radius:12px;font-size:clamp(13px,3.4vw,14px);font-family:var(--dm);color:var(--text);background:#f9fafb;outline:none;transition:border-color 0.2s,box-shadow 0.2s}
 .form-input:focus{border-color:var(--admin);box-shadow:0 0 0 3px rgba(99,102,241,0.12);background:var(--white)}
-
-/* ID display field */
+.form-input.teal-focus:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(0,201,167,0.12)}
 .form-id-box{width:100%;padding:clamp(10px,3vw,12px) clamp(13px,3.8vw,15px);border:1.5px dashed var(--border);border-radius:12px;font-size:clamp(10px,2.6vw,12px);font-family:monospace;color:var(--muted);background:#f9fafb;word-break:break-all;line-height:1.5;display:flex;align-items:center;justify-content:space-between;gap:8px}
 .form-id-box span{flex:1;word-break:break-all}
 .copy-id-btn{flex-shrink:0;padding:4px 10px;background:var(--admin-light);color:var(--admin);border:1px solid var(--admin-border);border-radius:8px;font-size:11px;font-weight:700;font-family:var(--nunito);cursor:pointer;white-space:nowrap}
-.copy-id-btn:hover{background:var(--admin-border)}
-
 .form-input-wrap{position:relative;display:flex;align-items:center}
 .form-input-wrap .form-input{padding-right:44px}
 .form-eye{position:absolute;right:14px;cursor:pointer;width:16px;height:16px;stroke:#b0b5be;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-
 .form-toggle{display:flex;align-items:center;justify-content:space-between;padding:clamp(11px,3.2vw,13px) clamp(13px,3.8vw,15px);border:1.5px solid var(--border);border-radius:12px;background:#f9fafb;cursor:pointer}
 .form-toggle-label{font-size:clamp(13px,3.4vw,14px);color:var(--text);font-weight:500}
 .toggle-switch{width:42px;height:24px;border-radius:99px;background:#e5e7eb;position:relative;transition:background 0.2s;flex-shrink:0}
@@ -517,15 +514,14 @@ html,body{height:100%;overflow-x:hidden}
 .admin-success{background:#f0fdf4;border:1.5px solid #a7f3d0;color:#059669;border-radius:12px;padding:10px 14px;font-size:clamp(11px,3vw,13px);font-weight:500;margin-bottom:14px;text-align:center}
 .confirm-danger-btn{width:100%;padding:clamp(13px,3.8vw,15px);background:linear-gradient(135deg,#FF6B6B,#e11d48);border:none;border-radius:99px;font-family:var(--nunito);font-size:clamp(14px,4vw,15px);font-weight:700;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 6px 18px rgba(225,29,72,0.3);margin-top:4px}
 .confirm-danger-btn:disabled{opacity:0.6;cursor:not-allowed}
-
-/* Password strength */
 .pw-strength{margin-top:6px;display:flex;gap:4px;align-items:center}
 .pw-bar{flex:1;height:3px;border-radius:99px;background:#e5e7eb;transition:background 0.3s}
-.pw-bar.weak{background:#f87171}
-.pw-bar.fair{background:#fb923c}
-.pw-bar.good{background:#34d399}
-.pw-bar.strong{background:#059669}
 .pw-label{font-size:10px;color:var(--muted);white-space:nowrap}
+
+/* INFO BOX */
+.info-box{background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:12px;padding:12px 14px;font-size:clamp(11px,3vw,12px);color:#1d4ed8;line-height:1.6;margin-bottom:14px}
+.info-box strong{font-weight:700}
+.info-box-warn{background:#fffbeb;border-color:#fde68a;color:#92400e}
 `;
 
 /* ── ICONS ── */
@@ -538,23 +534,17 @@ const FileThumb = ({ type }) => {
   return <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>;
 };
 
-/* ── PASSWORD STRENGTH ── */
-function passwordStrength(pw) {
-  if (!pw) return { score: 0, label: "" };
-  let score = 0;
-  if (pw.length >= 8)  score++;
-  if (pw.length >= 12) score++;
-  if (/[A-Z]/.test(pw)) score++;
-  if (/[0-9]/.test(pw)) score++;
-  if (/[^A-Za-z0-9]/.test(pw)) score++;
-  const labels = ["","Weak","Fair","Good","Strong","Strong"];
-  return { score, label: labels[score] || "Strong" };
-}
+/* ════════════════════════════════
+   SHARED COMPONENTS
+════════════════════════════════ */
 
-/* ── LOGOUT CONFIRM ── */
 function LogoutConfirm({ onCancel, onConfirm }) {
   const [busy, setBusy] = useState(false);
-  const handleConfirm = async () => { setBusy(true); await onConfirm(); setBusy(false); };
+  const handleConfirm = async () => {
+    setBusy(true);
+    try { await onConfirm(); } catch {}
+    setBusy(false);
+  };
   return (
     <div className="overlay" onClick={onCancel}>
       <div className="sheet" onClick={e => e.stopPropagation()}>
@@ -575,14 +565,36 @@ function LogoutConfirm({ onCancel, onConfirm }) {
   );
 }
 
-/* ── AUTH ── */
+function DeleteConfirmSheet({ title, sub, onClose, onConfirm }) {
+  const [busy, setBusy] = useState(false);
+  const handle = async () => { setBusy(true); await onConfirm(); setBusy(false); };
+  return (
+    <div className="overlay" onClick={!busy ? onClose : undefined}>
+      <div className="sheet" onClick={e => e.stopPropagation()}>
+        <div className="sheet-handle"/>
+        <div className="logout-confirm-icon"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg></div>
+        <p className="logout-confirm-title">{title}</p>
+        <p className="logout-confirm-sub">{sub}</p>
+        <div className="logout-confirm-btns">
+          <button className="logout-cancel-btn" onClick={onClose} disabled={busy}>Cancel</button>
+          <button className="confirm-danger-btn" onClick={handle} disabled={busy}>
+            {busy ? <span className="spin" style={{width:16,height:16,borderWidth:2}}/> : "Yes, delete"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════
+   AUTH PAGE
+════════════════════════════════ */
 function AuthPage({ onAuth }) {
   const [email, setEmail] = useState("");
   const [pass, setPass]   = useState("");
   const [show, setShow]   = useState(false);
-  const [rem, setRem]     = useState(false);
   const [busy, setBusy]   = useState(false);
-  const [err, setErr]     = useState("");
+  const [err,  setErr]    = useState("");
 
   const handle = async () => {
     setErr("");
@@ -591,7 +603,19 @@ function AuthPage({ onAuth }) {
     try {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
       if (error) throw error;
-      onAuth(data.user);
+      const user = data.user;
+      // Check if account is disabled
+      const profile = await fetchProfile(user.id);
+      if (profile?.is_disabled) {
+        await supabase.auth.signOut();
+        throw new Error("Your account has been disabled. Please contact your administrator.");
+      }
+      // Check if profile exists (deleted profile = blocked)
+      if (!profile) {
+        await supabase.auth.signOut();
+        throw new Error("Account not found. Please contact your administrator.");
+      }
+      onAuth(user);
     } catch (e) {
       setErr(e.message || "Invalid email or password.");
     } finally { setBusy(false); }
@@ -628,23 +652,22 @@ function AuthPage({ onAuth }) {
         <div className="cv-field">
           <label>Email Address</label>
           <div className="cv-input-wrap">
-            <svg className="fi" viewBox="0 0 24 24" fill="none" stroke="#b0b5be" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            <svg className="fi" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
             <input className="cv-input" type="email" placeholder="you@email.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key==="Enter" && handle()}/>
           </div>
         </div>
         <div className="cv-field">
           <label>Password</label>
           <div className="cv-input-wrap">
-            <svg className="fi" viewBox="0 0 24 24" fill="none" stroke="#b0b5be" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+            <svg className="fi" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
             <input className="cv-input" type={show?"text":"password"} placeholder="Enter your password" value={pass} onChange={e => setPass(e.target.value)} onKeyDown={e => e.key==="Enter" && handle()}/>
-            <svg className="cv-eye" viewBox="0 0 24 24" onClick={() => setShow(!show)} fill="none" stroke="#b0b5be" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <svg className="cv-eye" viewBox="0 0 24 24" onClick={() => setShow(!show)}>
               {show ? <><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></> : <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>}
             </svg>
           </div>
         </div>
         <div className="cv-row">
-          <label className="cv-remember"><input type="checkbox" checked={rem} onChange={e => setRem(e.target.checked)}/><span>Remember Me</span></label>
-          <span className="cv-forgot">Forgot Password?</span>
+          <label className="cv-remember"><input type="checkbox"/><span>Remember Me</span></label>
         </div>
         <button className="cv-btn" onClick={handle} disabled={busy}>
           {busy ? <><span className="spin"/>Signing in…</> : "Sign In →"}
@@ -654,7 +677,9 @@ function AuthPage({ onAuth }) {
   );
 }
 
-/* ── FILE VIEWER ── */
+/* ════════════════════════════════
+   FILE VIEWER
+════════════════════════════════ */
 function FileViewer({ record, onClose, onDownload }) {
   const [url, setUrl]   = useState(null);
   const [busy, setBusy] = useState(true);
@@ -695,13 +720,15 @@ function FileViewer({ record, onClose, onDownload }) {
   );
 }
 
-/* ── FILE OPTIONS ── */
+/* ════════════════════════════════
+   FILE OPTIONS SHEET
+════════════════════════════════ */
 function FileOptions({ record, onClose, onView, onDownload, onDelete }) {
   return (
     <div className="overlay" onClick={onClose}>
       <div className="sheet" onClick={e => e.stopPropagation()}>
         <div className="sheet-handle"/>
-        <p className="sheet-title" style={{fontSize:"clamp(13px,3.6vw,15px)",marginBottom:6,fontWeight:700,wordBreak:"break-all"}}>{record.original_name}</p>
+        <p style={{fontSize:"clamp(13px,3.6vw,15px)",marginBottom:6,fontWeight:700,wordBreak:"break-all",fontFamily:"var(--nunito)",color:"var(--text)"}}>{record.original_name}</p>
         <p style={{fontSize:"clamp(10px,2.8vw,12px)",color:"var(--muted)",marginBottom:16}}>{formatSize(record.size)} · {timeAgo(record.created_at)}</p>
         <div className="opt-list">
           {[
@@ -721,11 +748,13 @@ function FileOptions({ record, onClose, onView, onDownload, onDelete }) {
   );
 }
 
-/* ── UPLOAD SHEET ── */
+/* ════════════════════════════════
+   UPLOAD SHEET
+════════════════════════════════ */
 function UploadSheet({ onClose, userId, onUploaded, showToast }) {
-  const [queue, setQueue]   = useState([]);
-  const [busy, setBusy]     = useState(false);
-  const [current, setCurrent] = useState("");
+  const [queue, setQueue]       = useState([]);
+  const [busy, setBusy]         = useState(false);
+  const [current, setCurrent]   = useState("");
   const [doneCount, setDoneCount] = useState(0);
   const imgRef = useRef(null);
   const vidRef = useRef(null);
@@ -769,7 +798,7 @@ function UploadSheet({ onClose, userId, onUploaded, showToast }) {
     if (s === "pending")   return <span style={{color:"#9ca3af"}}>○</span>;
     if (s === "uploading") return <span className="spin spin-teal" style={{width:14,height:14,borderWidth:2}}/>;
     if (s === "done")      return <span style={{color:"#059669"}}>✓</span>;
-    if (s === "error")     return <span style={{color:"#e11d48"}}>✕</span>;
+    return <span style={{color:"#e11d48"}}>✕</span>;
   };
 
   return (
@@ -780,10 +809,10 @@ function UploadSheet({ onClose, userId, onUploaded, showToast }) {
         {!busy && (
           <div className="upload-opts" style={{marginBottom: queue.length ? 16 : 0}}>
             {[
-              { label:"Images",    sub:"Select multiple", color:"teal",   accept:"image/*",   ref:imgRef, icon:<><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></> },
-              { label:"Videos",    sub:"Select multiple", color:"violet", accept:"video/*",   ref:vidRef, icon:<><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></> },
-              { label:"Documents", sub:"PDF, DOC, ZIP…",  color:"blue",   accept:".pdf,.doc,.docx,.txt,.xlsx,.pptx,.zip", ref:docRef, icon:<><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></> },
-              { label:"Any File",  sub:"All types",       color:"rose",   accept:"*",         ref:null,   icon:<><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></> },
+              { label:"Images", sub:"Select multiple", color:"teal", accept:"image/*", ref:imgRef, icon:<><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></> },
+              { label:"Videos", sub:"Select multiple", color:"violet", accept:"video/*", ref:vidRef, icon:<><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></> },
+              { label:"Documents", sub:"PDF, DOC, ZIP…", color:"blue", accept:".pdf,.doc,.docx,.txt,.xlsx,.pptx,.zip", ref:docRef, icon:<><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></> },
+              { label:"Any File", sub:"All types", color:"rose", accept:"*", ref:null, icon:<><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></> },
             ].map((o, i) => (
               <div key={i} className="upload-opt" onClick={() => {
                 if (o.ref) { o.ref.current.click(); return; }
@@ -840,7 +869,9 @@ function UploadSheet({ onClose, userId, onUploaded, showToast }) {
   );
 }
 
-/* ── IMAGE THUMB ── */
+/* ════════════════════════════════
+   IMAGE THUMB
+════════════════════════════════ */
 function ImageThumb({ record }) {
   const [url, setUrl] = useState(null);
   useEffect(() => {
@@ -854,16 +885,183 @@ function ImageThumb({ record }) {
     : <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>;
 }
 
-/* ═══════════════════════════════════
-   ADMIN PANEL
-   ═══════════════════════════════════ */
+/* ════════════════════════════════
+   PROFILE MODALS
+════════════════════════════════ */
 
-/* ── CREATE / EDIT USER SHEET ── */
+// Edit Profile Sheet
+function EditProfileSheet({ profile, user, onClose, onSaved, showToast }) {
+  const [name, setName] = useState(profile?.full_name || "");
+  const [busy, setBusy] = useState(false);
+  const [err,  setErr]  = useState("");
+
+  const handleSave = async () => {
+    setErr("");
+    if (!name.trim()) { setErr("Name cannot be empty."); return; }
+    setBusy(true);
+    try {
+      await supabase.from("profiles").update({ full_name: name.trim() }).eq("id", user.id);
+      showToast("✅ Profile updated!");
+      onSaved();
+      onClose();
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="overlay" onClick={!busy ? onClose : undefined}>
+      <div className="sheet" onClick={e => e.stopPropagation()}>
+        <div className="sheet-handle"/>
+        <p className="sheet-title">Edit Profile</p>
+        {err && <div className="admin-err">{err}</div>}
+        <div className="form-field">
+          <label>Full Name</label>
+          <input className="form-input teal-focus" value={name} onChange={e => setName(e.target.value)} placeholder="Your full name"/>
+        </div>
+        <div className="form-field">
+          <label>Email Address</label>
+          <div className="form-id-box" style={{borderStyle:"solid",background:"#f3f4f6"}}>
+            <span style={{fontSize:"clamp(12px,3vw,13px)",fontFamily:"var(--dm)",color:"var(--text)"}}>{user?.email}</span>
+            <span style={{fontSize:10,color:"var(--muted)",whiteSpace:"nowrap"}}>Read-only</span>
+          </div>
+          <p style={{fontSize:11,color:"var(--muted)",marginTop:4,paddingLeft:2}}>Contact your administrator to change your email.</p>
+        </div>
+        <button
+          style={{width:"100%",padding:"clamp(13px,3.8vw,15px)",background:"linear-gradient(135deg,var(--teal),var(--teal3))",border:"none",borderRadius:99,fontFamily:"var(--nunito)",fontSize:"clamp(14px,4vw,15px)",fontWeight:700,color:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,boxShadow:"0 6px 20px rgba(0,180,160,0.35)"}}
+          onClick={handleSave} disabled={busy}>
+          {busy ? <><span className="spin" style={{width:16,height:16,borderWidth:2}}/>Saving…</> : "Save Changes"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Privacy & Security Sheet
+function PrivacySecuritySheet({ user, onClose, showToast }) {
+  const [currentPw, setCurrentPw] = useState("");
+  const [newPw, setNewPw]         = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [showC, setShowC]         = useState(false);
+  const [showN, setShowN]         = useState(false);
+  const [busy, setBusy]           = useState(false);
+  const [err, setErr]             = useState("");
+  const [success, setSuccess]     = useState("");
+  const pwStr = passwordStrength(newPw);
+
+  const handleChange = async () => {
+    setErr(""); setSuccess("");
+    if (!currentPw) { setErr("Enter your current password."); return; }
+    if (!newPw) { setErr("Enter a new password."); return; }
+    if (newPw.length < 6) { setErr("New password must be at least 6 characters."); return; }
+    if (newPw !== confirmPw) { setErr("Passwords don't match."); return; }
+    setBusy(true);
+    try {
+      // Re-authenticate first
+      const { error: reAuthErr } = await supabase.auth.signInWithPassword({ email: user.email, password: currentPw });
+      if (reAuthErr) throw new Error("Current password is incorrect.");
+      // Update password
+      const { error } = await supabase.auth.updateUser({ password: newPw });
+      if (error) throw error;
+      setSuccess("✅ Password changed successfully!");
+      setCurrentPw(""); setNewPw(""); setConfirmPw("");
+      showToast("✅ Password updated!");
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="overlay" onClick={!busy ? onClose : undefined}>
+      <div className="sheet" onClick={e => e.stopPropagation()}>
+        <div className="sheet-handle"/>
+        <p className="sheet-title">Privacy & Security</p>
+        {err     && <div className="admin-err">{err}</div>}
+        {success && <div className="admin-success">{success}</div>}
+        <p style={{fontSize:"clamp(12px,3.2vw,13px)",fontWeight:700,color:"var(--text)",marginBottom:12}}>Change Password</p>
+        <div className="form-field">
+          <label>Current Password</label>
+          <div className="form-input-wrap">
+            <input className="form-input teal-focus" type={showC?"text":"password"} value={currentPw} onChange={e => setCurrentPw(e.target.value)} placeholder="Your current password"/>
+            <svg className="form-eye" viewBox="0 0 24 24" onClick={() => setShowC(v => !v)}>
+              {showC ? <><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></> : <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>}
+            </svg>
+          </div>
+        </div>
+        <div className="form-field">
+          <label>New Password</label>
+          <div className="form-input-wrap">
+            <input className="form-input teal-focus" type={showN?"text":"password"} value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="Min. 6 characters"/>
+            <svg className="form-eye" viewBox="0 0 24 24" onClick={() => setShowN(v => !v)}>
+              {showN ? <><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></> : <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>}
+            </svg>
+          </div>
+          {newPw && (
+            <div className="pw-strength">
+              {[1,2,3,4].map(i => (
+                <div key={i} className="pw-bar" style={{background: i <= Math.ceil(pwStr.score * 4/5)
+                  ? pwStr.score >= 5 ? "#059669" : pwStr.score >= 3 ? "#34d399" : pwStr.score >= 2 ? "#fb923c" : "#f87171"
+                  : "#e5e7eb"}}/>
+              ))}
+              <span className="pw-label">{pwStr.label}</span>
+            </div>
+          )}
+        </div>
+        <div className="form-field">
+          <label>Confirm New Password</label>
+          <input className="form-input teal-focus" type="password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} placeholder="Repeat new password"/>
+        </div>
+        <button
+          style={{width:"100%",padding:"clamp(13px,3.8vw,15px)",background:"linear-gradient(135deg,var(--teal),var(--teal3))",border:"none",borderRadius:99,fontFamily:"var(--nunito)",fontSize:"clamp(14px,4vw,15px)",fontWeight:700,color:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,boxShadow:"0 6px 20px rgba(0,180,160,0.35)"}}
+          onClick={handleChange} disabled={busy}>
+          {busy ? <><span className="spin" style={{width:16,height:16,borderWidth:2}}/>Updating…</> : "Update Password"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Help & Support Sheet
+function HelpSupportSheet({ onClose }) {
+  const faqs = [
+    { q:"How do I upload files?", a:"Tap the + button at the bottom center, or use the Upload quick action on the home screen. You can select multiple files at once." },
+    { q:"What file types are supported?", a:"ZharmVault supports all file types: images (JPG, PNG, GIF, WebP), videos (MP4, MOV, AVI), and documents (PDF, DOC, DOCX, XLSX, PPTX, ZIP, TXT)." },
+    { q:"How do I share a file?", a:"Open a file, tap the ··· menu, then tap 'Share Link'. The signed URL will be copied to your clipboard — it's valid for 1 hour." },
+    { q:"Can I change my password?", a:"Yes! Go to Profile → Privacy & Security → Change Password." },
+    { q:"Who can access my files?", a:"Only you can access your files. Admins can view and manage all files in the system." },
+    { q:"How do I contact the admin?", a:"Reach out to your system administrator directly. They manage your account, storage limits, and access." },
+  ];
+  const [open, setOpen] = useState(null);
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="sheet" onClick={e => e.stopPropagation()}>
+        <div className="sheet-handle"/>
+        <p className="sheet-title">Help & Support</p>
+        <div className="info-box" style={{marginBottom:16}}>
+          <strong>Need help?</strong> Browse the FAQs below or contact your administrator for account-related issues.
+        </div>
+        {faqs.map((f, i) => (
+          <div key={i} style={{borderBottom:"1px solid #f3f4f6",paddingBottom:12,marginBottom:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",gap:12}} onClick={() => setOpen(open===i?null:i)}>
+              <p style={{fontSize:"clamp(12px,3.4vw,14px)",fontWeight:600,color:"var(--text)",flex:1}}>{f.q}</p>
+              <span style={{color:"var(--muted)",fontSize:18,flexShrink:0,transform:open===i?"rotate(180deg)":"none",transition:"transform 0.2s"}}>⌄</span>
+            </div>
+            {open===i && <p style={{fontSize:"clamp(11px,3vw,13px)",color:"var(--muted)",marginTop:8,lineHeight:1.6}}>{f.a}</p>}
+          </div>
+        ))}
+        <div style={{background:"#f9fafb",borderRadius:14,padding:"14px 16px",marginTop:4}}>
+          <p style={{fontSize:"clamp(11px,3vw,13px)",fontWeight:600,color:"var(--text)",marginBottom:4}}>Still need help?</p>
+          <p style={{fontSize:"clamp(10px,2.8vw,12px)",color:"var(--muted)",lineHeight:1.5}}>Contact your system administrator for account issues, storage upgrades, or technical problems.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════
+   ADMIN — CREATE / EDIT USER
+════════════════════════════════ */
 function EditUserSheet({ profile, onClose, onSaved, showToast }) {
   const isNew = !profile;
-
-  // Pre-generate a UUID for display when creating
-  const [generatedId]     = useState(() => isNew ? generateId() : profile.id);
   const [name,    setName]    = useState(profile?.full_name || "");
   const [email,   setEmail]   = useState(profile?.email || "");
   const [pass,    setPass]    = useState("");
@@ -873,60 +1071,32 @@ function EditUserSheet({ profile, onClose, onSaved, showToast }) {
   const [busy,    setBusy]    = useState(false);
   const [err,     setErr]     = useState("");
   const [success, setSuccess] = useState("");
-  const [copied,  setCopied]  = useState(false);
-
-  const pwStrength = passwordStrength(pass);
-
-  const copyId = async () => {
-    try {
-      await navigator.clipboard.writeText(generatedId);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {}
-  };
+  const pwStr = passwordStrength(pass);
 
   const handleSave = async () => {
     setErr(""); setSuccess("");
-
     if (!name.trim()) { setErr("Full name is required."); return; }
-
     if (isNew) {
-      if (!email.trim()) { setErr("Email address is required."); return; }
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setErr("Enter a valid email address."); return; }
-      if (!pass) { setErr("Password is required."); return; }
-      if (pass.length < 6) { setErr("Password must be at least 6 characters."); return; }
+      if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setErr("Enter a valid email address."); return; }
+      if (!pass || pass.length < 6) { setErr("Password must be at least 6 characters."); return; }
     }
-
     const limitBytes = parseFloat(limit) * 1024 ** 3;
     if (isNaN(limitBytes) || limitBytes <= 0) { setErr("Storage limit must be a positive number (GB)."); return; }
-
     setBusy(true);
     try {
       if (isNew) {
-        await adminCreateUser({
-          full_name: name.trim(),
-          email: email.trim(),
-          password: pass,
-          storage_limit: limitBytes,
-          is_admin: isAdmin,
-        });
-        setSuccess("✅ User created! They may need to verify their email before logging in.");
-        showToast("✅ User created successfully");
+        await adminCreateUser({ full_name: name.trim(), email: email.trim(), password: pass, storage_limit: limitBytes, is_admin: isAdmin });
+        setSuccess("✅ User created successfully!");
+        showToast("✅ User created");
         onSaved();
-        setTimeout(() => onClose(), 2000);
+        setTimeout(() => onClose(), 1800);
       } else {
-        await adminUpdateProfile(profile.id, {
-          full_name: name.trim(),
-          storage_limit: limitBytes,
-          is_admin: isAdmin,
-        });
+        await adminUpdateProfile(profile.id, { full_name: name.trim(), storage_limit: limitBytes, is_admin: isAdmin });
         showToast("✅ Profile updated");
-        onSaved();
-        onClose();
+        onSaved(); onClose();
       }
-    } catch (e) {
-      setErr(e.message || "Something went wrong.");
-    } finally { setBusy(false); }
+    } catch (e) { setErr(e.message || "Something went wrong."); }
+    finally { setBusy(false); }
   };
 
   return (
@@ -934,114 +1104,53 @@ function EditUserSheet({ profile, onClose, onSaved, showToast }) {
       <div className="sheet" onClick={e => e.stopPropagation()}>
         <div className="sheet-handle"/>
         <p className="sheet-title">{isNew ? "Create New User" : "Edit User"}</p>
-
-        {err     && <div className="admin-err">{err}</div>}
-        {success && <div className="admin-success">{success}</div>}
-
-        {/* Auto-generated ID (show for new users) */}
         {isNew && (
-          <div className="form-field">
-            <label>Auto-Generated User ID</label>
-            <div className="form-id-box">
-              <span>{generatedId}</span>
-              <button className="copy-id-btn" onClick={copyId}>{copied ? "Copied!" : "Copy"}</button>
-            </div>
-            <p style={{fontSize:"clamp(9px,2.4vw,11px)",color:"var(--muted)",marginTop:5,paddingLeft:2}}>
-              This UUID is assigned by Supabase Auth upon account creation.
-            </p>
+          <div className="info-box info-box-warn" style={{marginBottom:14}}>
+            <strong>Note:</strong> Make sure <em>"Disable email confirmations"</em> is turned ON in your Supabase Auth settings, otherwise the new user must verify their email before logging in.
           </div>
         )}
-
-        {/* Full Name */}
+        {err     && <div className="admin-err">{err}</div>}
+        {success && <div className="admin-success">{success}</div>}
         <div className="form-field">
           <label>Full Name <span style={{color:"#e11d48"}}>*</span></label>
-          <input
-            className="form-input"
-            value={name}
-            onChange={e => setName(e.target.value)}
-            placeholder="e.g. Jane Dela Cruz"
-          />
+          <input className="form-input" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Jane Dela Cruz"/>
         </div>
-
-        {/* Email — required for new, read-only for edit */}
         <div className="form-field">
           <label>Email Address {isNew && <span style={{color:"#e11d48"}}>*</span>}</label>
           {isNew ? (
-            <input
-              className="form-input"
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              placeholder="user@example.com"
-              autoComplete="off"
-            />
+            <input className="form-input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="user@example.com" autoComplete="off"/>
           ) : (
             <div className="form-id-box" style={{borderStyle:"solid",background:"#f3f4f6"}}>
-              <span style={{fontSize:"clamp(12px,3vw,13px)",fontFamily:"var(--dm)",color:"var(--text)"}}>
-                {profile?.email || "—"}
-              </span>
+              <span style={{fontSize:"clamp(12px,3vw,13px)",fontFamily:"var(--dm)",color:"var(--text)"}}>{profile?.email || "—"}</span>
               <span style={{fontSize:10,color:"var(--muted)",whiteSpace:"nowrap"}}>Read-only</span>
             </div>
           )}
         </div>
-
-        {/* Password — only for new users */}
         {isNew && (
           <div className="form-field">
             <label>Password <span style={{color:"#e11d48"}}>*</span></label>
             <div className="form-input-wrap">
-              <input
-                className="form-input"
-                type={showPw ? "text" : "password"}
-                value={pass}
-                onChange={e => setPass(e.target.value)}
-                placeholder="Min. 6 characters"
-                autoComplete="new-password"
-              />
+              <input className="form-input" type={showPw?"text":"password"} value={pass} onChange={e => setPass(e.target.value)} placeholder="Min. 6 characters" autoComplete="new-password"/>
               <svg className="form-eye" viewBox="0 0 24 24" onClick={() => setShowPw(v => !v)}>
-                {showPw
-                  ? <><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></>
-                  : <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>}
+                {showPw ? <><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></> : <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>}
               </svg>
             </div>
             {pass && (
               <div className="pw-strength">
                 {[1,2,3,4].map(i => (
-                  <div key={i} className={`pw-bar ${
-                    pwStrength.score >= 5 ? "strong" :
-                    pwStrength.score >= 3 ? "good" :
-                    pwStrength.score >= 2 ? "fair" :
-                    pwStrength.score >= 1 ? "weak" : ""
-                  } ${i > Math.ceil(pwStrength.score * 4/5) ? "" : ""}`}
-                  style={{background: i <= Math.ceil(pwStrength.score * 4/5)
-                    ? pwStrength.score >= 5 ? "#059669"
-                    : pwStrength.score >= 3 ? "#34d399"
-                    : pwStrength.score >= 2 ? "#fb923c"
-                    : "#f87171"
-                    : "#e5e7eb"
-                  }}/>
+                  <div key={i} className="pw-bar" style={{background: i <= Math.ceil(pwStr.score * 4/5)
+                    ? pwStr.score >= 5 ? "#059669" : pwStr.score >= 3 ? "#34d399" : pwStr.score >= 2 ? "#fb923c" : "#f87171"
+                    : "#e5e7eb"}}/>
                 ))}
-                <span className="pw-label">{pwStrength.label}</span>
+                <span className="pw-label">{pwStr.label}</span>
               </div>
             )}
           </div>
         )}
-
-        {/* Storage Limit */}
         <div className="form-field">
           <label>Storage Limit (GB) <span style={{color:"#e11d48"}}>*</span></label>
-          <input
-            className="form-input"
-            type="number"
-            min="1"
-            max="1000"
-            value={limit}
-            onChange={e => setLimit(e.target.value)}
-            placeholder="5"
-          />
+          <input className="form-input" type="number" min="1" max="1000" value={limit} onChange={e => setLimit(e.target.value)} placeholder="5"/>
         </div>
-
-        {/* Admin Toggle */}
         <div className="form-field">
           <label>Admin Privileges</label>
           <div className="form-toggle" onClick={() => setIsAdmin(v => !v)}>
@@ -1049,44 +1158,21 @@ function EditUserSheet({ profile, onClose, onSaved, showToast }) {
             <div className={`toggle-switch ${isAdmin?"on":""}`}><div className="toggle-knob"/></div>
           </div>
         </div>
-
         <button className="admin-btn" onClick={handleSave} disabled={busy}>
-          {busy
-            ? <><span className="spin" style={{width:16,height:16,borderWidth:2}}/>{isNew?"Creating…":"Saving…"}</>
-            : isNew ? "Create Account" : "Save Changes"}
+          {busy ? <><span className="spin" style={{width:16,height:16,borderWidth:2}}/>{isNew?"Creating…":"Saving…"}</> : isNew ? "Create Account" : "Save Changes"}
         </button>
       </div>
     </div>
   );
 }
 
-/* Delete Confirm Sheet */
-function DeleteConfirmSheet({ title, sub, onClose, onConfirm }) {
-  const [busy, setBusy] = useState(false);
-  const handle = async () => { setBusy(true); await onConfirm(); setBusy(false); };
-  return (
-    <div className="overlay" onClick={!busy ? onClose : undefined}>
-      <div className="sheet" onClick={e => e.stopPropagation()}>
-        <div className="sheet-handle"/>
-        <div className="logout-confirm-icon"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg></div>
-        <p className="logout-confirm-title">{title}</p>
-        <p className="logout-confirm-sub">{sub}</p>
-        <div className="logout-confirm-btns">
-          <button className="logout-cancel-btn" onClick={onClose} disabled={busy}>Cancel</button>
-          <button className="confirm-danger-btn" onClick={handle} disabled={busy}>
-            {busy ? <span className="spin" style={{width:16,height:16,borderWidth:2}}/> : "Yes, delete"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* Admin Users Tab */
+/* ════════════════════════════════
+   ADMIN USERS TAB
+════════════════════════════════ */
 function AdminUsersTab({ showToast, currentUserId }) {
-  const [profiles, setProfiles] = useState([]);
-  const [loading,  setLoading]  = useState(true);
-  const [query,    setQuery]    = useState("");
+  const [profiles, setProfiles]   = useState([]);
+  const [loading,  setLoading]    = useState(true);
+  const [query,    setQuery]      = useState("");
   const [editTarget, setEditTarget] = useState(undefined);
   const [deleteTarget, setDeleteTarget] = useState(null);
 
@@ -1100,8 +1186,8 @@ function AdminUsersTab({ showToast, currentUserId }) {
   useEffect(() => { load(); }, [load]);
 
   const visible = profiles.filter(p =>
-    (p.full_name || "").toLowerCase().includes(query.toLowerCase()) ||
-    (p.email || "").toLowerCase().includes(query.toLowerCase())
+    (p.full_name||"").toLowerCase().includes(query.toLowerCase()) ||
+    (p.email||"").toLowerCase().includes(query.toLowerCase())
   );
 
   const handleToggleDisable = async (p) => {
@@ -1121,7 +1207,7 @@ function AdminUsersTab({ showToast, currentUserId }) {
     } catch (e) { showToast("❌ " + e.message); }
   };
 
-  const initials = (name) => (name || "?").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+  const initials = (name) => (name||"?").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
 
   return (
     <>
@@ -1142,66 +1228,59 @@ function AdminUsersTab({ showToast, currentUserId }) {
         <div style={{display:"flex",justifyContent:"center",padding:"32px 0"}}><div className="spin spin-admin" style={{width:32,height:32}}/></div>
       ) : visible.length === 0 ? (
         <div className="empty">
-          <div className="empty-icon"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg></div>
+          <div className="empty-icon"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div>
           <h3>No users found</h3><p>{query ? "Try a different search" : "No profiles in the database"}</p>
         </div>
-      ) : (
-        visible.map(p => {
-          const usedPct = p.storage_limit ? Math.min((p.storage_used || 0) / p.storage_limit * 100, 100) : 0;
-          const isSelf  = p.id === currentUserId;
-          return (
-            <div className={`user-card ${p.is_disabled ? "disabled-user" : ""}`} key={p.id}>
-              <div className="user-card-top">
-                <div className="user-avatar">{initials(p.full_name)}</div>
-                <div className="user-info">
-                  <p className="user-name">{p.full_name || "Unnamed"} {isSelf && <span style={{fontSize:10,color:"var(--teal2)",fontWeight:700}}>(you)</span>}</p>
-                  <p className="user-email">{p.email || p.id}</p>
-                  <div className="user-badges">
-                    {p.is_admin    && <span className="badge badge-admin">Admin</span>}
-                    {p.is_disabled ? <span className="badge badge-disabled">Disabled</span> : <span className="badge badge-active">Active</span>}
-                  </div>
+      ) : visible.map(p => {
+        const usedPct = p.storage_limit ? Math.min((p.storage_used||0)/p.storage_limit*100,100) : 0;
+        const isSelf  = p.id === currentUserId;
+        return (
+          <div className={`user-card ${p.is_disabled?"disabled-user":""}`} key={p.id}>
+            <div className="user-card-top">
+              <div className="user-avatar">{initials(p.full_name)}</div>
+              <div className="user-info">
+                <p className="user-name">{p.full_name||"Unnamed"} {isSelf && <span style={{fontSize:10,color:"var(--teal2)",fontWeight:700}}>(you)</span>}</p>
+                <p className="user-email">{p.email||p.id}</p>
+                <div className="user-badges">
+                  {p.is_admin    && <span className="badge badge-admin">Admin</span>}
+                  {p.is_disabled ? <span className="badge badge-disabled">Disabled</span> : <span className="badge badge-active">Active</span>}
                 </div>
               </div>
-              <div className="user-card-meta">
-                <span className="user-meta-item"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>{formatSize(p.storage_used || 0)} used</span>
-                <span className="user-meta-item"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>{timeAgo(p.created_at)}</span>
-                <span className="user-meta-item"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>{formatGB(p.storage_limit || 0)} limit</span>
-              </div>
-              <div className="user-stor-bar"><div className="user-stor-fill" style={{width:`${usedPct}%`}}/></div>
-              <div className="user-actions">
-                <button className="ua-btn edit" onClick={() => setEditTarget(p)}>
-                  <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit
-                </button>
-                {!isSelf && (
-                  <button className={`ua-btn ${p.is_disabled ? "enable" : "disable"}`} onClick={() => handleToggleDisable(p)}>
-                    {p.is_disabled
-                      ? <><svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>Enable</>
-                      : <><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>Disable</>}
-                  </button>
-                )}
-                {!isSelf && (
-                  <button className="ua-btn del" onClick={() => setDeleteTarget(p)}>
-                    <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>Delete
-                  </button>
-                )}
-              </div>
             </div>
-          );
-        })
-      )}
+            <div className="user-card-meta">
+              <span className="user-meta-item"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>{formatSize(p.storage_used||0)} used</span>
+              <span className="user-meta-item"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>{timeAgo(p.created_at)}</span>
+              <span className="user-meta-item"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>{formatGB(p.storage_limit||0)} limit</span>
+            </div>
+            <div className="user-stor-bar"><div className="user-stor-fill" style={{width:`${usedPct}%`}}/></div>
+            <div className="user-actions">
+              <button className="ua-btn edit" onClick={() => setEditTarget(p)}>
+                <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit
+              </button>
+              {!isSelf && (
+                <button className={`ua-btn ${p.is_disabled?"enable":"disable"}`} onClick={() => handleToggleDisable(p)}>
+                  {p.is_disabled
+                    ? <><svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>Enable</>
+                    : <><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>Disable</>}
+                </button>
+              )}
+              {!isSelf && (
+                <button className="ua-btn del" onClick={() => setDeleteTarget(p)}>
+                  <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>Delete
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })}
 
       {editTarget !== undefined && (
-        <EditUserSheet
-          profile={editTarget}
-          onClose={() => setEditTarget(undefined)}
-          onSaved={load}
-          showToast={showToast}
-        />
+        <EditUserSheet profile={editTarget} onClose={() => setEditTarget(undefined)} onSaved={load} showToast={showToast}/>
       )}
       {deleteTarget && (
         <DeleteConfirmSheet
           title="Delete user?"
-          sub={`This will permanently delete ${deleteTarget.full_name || "this user"} and all their files. This cannot be undone.`}
+          sub={`Permanently delete ${deleteTarget.full_name||"this user"} and all their files. This cannot be undone.`}
           onClose={() => setDeleteTarget(null)}
           onConfirm={() => handleDelete(deleteTarget)}
         />
@@ -1210,7 +1289,9 @@ function AdminUsersTab({ showToast, currentUserId }) {
   );
 }
 
-/* Admin Files Tab */
+/* ════════════════════════════════
+   ADMIN FILES TAB
+════════════════════════════════ */
 function AdminFilesTab({ showToast }) {
   const [files,   setFiles]   = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1227,9 +1308,7 @@ function AdminFilesTab({ showToast }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const visible = files.filter(f =>
-    (f.original_name || "").toLowerCase().includes(query.toLowerCase())
-  );
+  const visible = files.filter(f => (f.original_name||"").toLowerCase().includes(query.toLowerCase()));
 
   const handleDelete = async (record) => {
     try {
@@ -1249,7 +1328,6 @@ function AdminFilesTab({ showToast }) {
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
         <span style={{fontSize:"clamp(11px,3vw,13px)",color:"var(--muted)",fontWeight:600}}>{visible.length} files across all users</span>
       </div>
-
       {loading ? (
         <div style={{display:"flex",justifyContent:"center",padding:"32px 0"}}><div className="spin spin-admin" style={{width:32,height:32}}/></div>
       ) : visible.length === 0 ? (
@@ -1276,12 +1354,11 @@ function AdminFilesTab({ showToast }) {
           ))}
         </div>
       )}
-
       {viewer && <FileViewer record={viewer} onClose={() => setViewer(null)} onDownload={r => { downloadFile(r); showToast("⬇️ Downloading…"); }}/>}
       {deleteTarget && (
         <DeleteConfirmSheet
           title="Delete file?"
-          sub={`Permanently delete "${deleteTarget.original_name}" from storage. This cannot be undone.`}
+          sub={`Permanently delete "${deleteTarget.original_name}". This cannot be undone.`}
           onClose={() => setDeleteTarget(null)}
           onConfirm={() => handleDelete(deleteTarget)}
         />
@@ -1290,18 +1367,19 @@ function AdminFilesTab({ showToast }) {
   );
 }
 
-/* ── ADMIN PAGE ── */
+/* ════════════════════════════════
+   ADMIN PAGE
+════════════════════════════════ */
 function AdminPage({ user, userId, onLogout, showToast, refreshKey }) {
   const [tab, setTab] = useState("users");
   const [profile, setProfile] = useState(null);
-  const [stats, setStats] = useState({ users: 0, files: 0, storage: 0 });
+  const [stats, setStats] = useState({ users:0, files:0, storage:0 });
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   useEffect(() => {
     fetchProfile(userId).then(p => setProfile(p));
     Promise.all([adminFetchAllProfiles(), adminFetchAllFiles()]).then(([profiles, files]) => {
-      const totalStorage = files.reduce((s, f) => s + (f.size || 0), 0);
-      setStats({ users: profiles.length, files: files.length, storage: totalStorage });
+      setStats({ users: profiles.length, files: files.length, storage: files.reduce((s,f) => s+(f.size||0), 0) });
     }).catch(() => {});
   }, [userId, refreshKey]);
 
@@ -1312,9 +1390,7 @@ function AdminPage({ user, userId, onLogout, showToast, refreshKey }) {
       <div className="admin-hdr">
         <div className="admin-hdr-row">
           <div className="admin-badge">
-            <div className="admin-badge-icon">
-              <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-            </div>
+            <div className="admin-badge-icon"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
             <div>
               <p className="admin-badge-label">Admin Panel</p>
               <p className="admin-badge-sub">{displayName}</p>
@@ -1330,43 +1406,39 @@ function AdminPage({ user, userId, onLogout, showToast, refreshKey }) {
           <div className="admin-stat"><p className="astat-val">{formatGB(stats.storage)}</p><p className="astat-lbl">Used</p></div>
         </div>
       </div>
-
       <div className="admin-body">
         <div className="sheet-pill"/>
         <div className="admin-tabs">
           <button className={`admin-tab ${tab==="users"?"active":""}`} onClick={() => setTab("users")}>
-            <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
-            Users
+            <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>Users
           </button>
           <button className={`admin-tab ${tab==="files"?"active":""}`} onClick={() => setTab("files")}>
-            <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
-            All Files
+            <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>All Files
           </button>
         </div>
-
-        {tab === "users" && <AdminUsersTab showToast={showToast} currentUserId={userId}/>}
-        {tab === "files" && <AdminFilesTab showToast={showToast}/>}
+        {tab==="users" && <AdminUsersTab showToast={showToast} currentUserId={userId}/>}
+        {tab==="files" && <AdminFilesTab showToast={showToast}/>}
       </div>
-
       {showLogoutConfirm && <LogoutConfirm onCancel={() => setShowLogoutConfirm(false)} onConfirm={onLogout}/>}
     </div>
   );
 }
 
-/* ── HOME BODY ── */
-function HomeBody({ userId, showToast, onUploadDone, refreshKey }) {
-  const [files, setFiles]     = useState([]);
+/* ════════════════════════════════
+   HOME BODY
+════════════════════════════════ */
+function HomeBody({ userId, showToast, onUploadDone, refreshKey, onNavigate }) {
+  const [files, setFiles]   = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showUp, setShowUp]   = useState(false);
-  const [viewer, setViewer]   = useState(null);
-  const [opts,   setOpts]     = useState(null);
+  const [showUp, setShowUp] = useState(false);
+  const [viewer, setViewer] = useState(null);
+  const [opts,   setOpts]   = useState(null);
   const mcColors = ["mc1","mc2","mc3","mc4","mc5","mc6"];
 
   const load = useCallback(async () => {
     setLoading(true);
     const data = await fetchFiles(userId);
-    setFiles(data);
-    setLoading(false);
+    setFiles(data); setLoading(false);
   }, [userId]);
 
   useEffect(() => { load(); }, [load, refreshKey]);
@@ -1377,7 +1449,7 @@ function HomeBody({ userId, showToast, onUploadDone, refreshKey }) {
     catch (e) { showToast("❌ " + e.message); }
   };
 
-  const imageFiles = files.filter(f => f.category === "images").slice(0, 6);
+  const imageFiles = files.filter(f => f.category==="images").slice(0,6);
 
   return (
     <>
@@ -1387,9 +1459,9 @@ function HomeBody({ userId, showToast, onUploadDone, refreshKey }) {
         <div className="qa-grid">
           {[
             { c:"teal",   l:"Upload", fn:() => setShowUp(true), icon:<><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></> },
-            { c:"blue",   l:"Photos", fn:() => showToast("📷 Use Files tab to browse"), icon:<><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></> },
-            { c:"violet", l:"Videos", fn:() => showToast("🎬 Use Files tab to browse"), icon:<><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></> },
-            { c:"rose",   l:"Share",  fn:() => showToast("📁 Open a file to share it"), icon:<><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></> },
+            { c:"blue",   l:"Photos", fn:() => onNavigate("files"), icon:<><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></> },
+            { c:"violet", l:"Videos", fn:() => onNavigate("files"), icon:<><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></> },
+            { c:"rose",   l:"Gallery",fn:() => onNavigate("gallery"), icon:<><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></> },
           ].map((a,i) => (
             <div className="qa-btn" key={i} onClick={a.fn}>
               <div className={`qa-icon ${a.c}`}><svg viewBox="0 0 24 24">{a.icon}</svg></div>
@@ -1398,7 +1470,10 @@ function HomeBody({ userId, showToast, onUploadDone, refreshKey }) {
           ))}
         </div>
 
-        <div className="sec-hdr" style={{marginTop:4}}><span className="sec-title">Recent Files</span><span className="sec-link">See All</span></div>
+        <div className="sec-hdr" style={{marginTop:4}}>
+          <span className="sec-title">Recent Files</span>
+          <span className="sec-link" onClick={() => onNavigate("files")}>See All</span>
+        </div>
         {loading ? (
           <div style={{display:"flex",justifyContent:"center",padding:"24px 0"}}><div className="spin spin-teal" style={{width:28,height:28}}/></div>
         ) : files.length === 0 ? (
@@ -1419,7 +1494,10 @@ function HomeBody({ userId, showToast, onUploadDone, refreshKey }) {
           </div>
         )}
 
-        <div className="sec-hdr"><span className="sec-title">Media Gallery</span><span className="sec-link">See All</span></div>
+        <div className="sec-hdr">
+          <span className="sec-title">Media Gallery</span>
+          <span className="sec-link" onClick={() => onNavigate("gallery")}>See All</span>
+        </div>
         {imageFiles.length === 0 ? (
           <div className="empty" style={{padding:"16px 0"}}>
             <div className="empty-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>
@@ -1441,19 +1519,21 @@ function HomeBody({ userId, showToast, onUploadDone, refreshKey }) {
   );
 }
 
-/* ── FILES BODY ── */
+/* ════════════════════════════════
+   FILES BODY
+════════════════════════════════ */
 function FilesBody({ userId, showToast, refreshKey, onUploadDone }) {
-  const [files,   setFiles]   = useState([]);
+  const [files,   setFiles]  = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter,  setFilter]  = useState("all");
-  const [query,   setQuery]   = useState("");
-  const [viewer,  setViewer]  = useState(null);
-  const [opts,    setOpts]    = useState(null);
-  const [showUp,  setShowUp]  = useState(false);
+  const [filter,  setFilter] = useState("all");
+  const [query,   setQuery]  = useState("");
+  const [viewer,  setViewer] = useState(null);
+  const [opts,    setOpts]   = useState(null);
+  const [showUp,  setShowUp] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const data = await fetchFiles(userId, filter === "all" ? null : filter);
+    const data = await fetchFiles(userId, filter==="all" ? null : filter);
     setFiles(data); setLoading(false);
   }, [userId, filter]);
 
@@ -1514,7 +1594,9 @@ function FilesBody({ userId, showToast, refreshKey, onUploadDone }) {
   );
 }
 
-/* ── GALLERY BODY ── */
+/* ════════════════════════════════
+   GALLERY BODY
+════════════════════════════════ */
 function GalleryBody({ userId, showToast, refreshKey }) {
   const [files,   setFiles]   = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1549,32 +1631,51 @@ function GalleryBody({ userId, showToast, refreshKey }) {
   );
 }
 
-/* ── PROFILE BODY ── */
+/* ════════════════════════════════
+   PROFILE BODY
+════════════════════════════════ */
 function ProfileBody({ user, userId, onLogout, showToast, refreshKey }) {
-  const [profile, setProfile] = useState(null);
-  const [fileCount, setFileCount] = useState(0);
-  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [profile, setProfile]       = useState(null);
+  const [fileCount, setFileCount]   = useState(0);
+  const [showLogout, setShowLogout] = useState(false);
+  const [showEdit, setShowEdit]     = useState(false);
+  const [showPrivacy, setShowPrivacy] = useState(false);
+  const [showHelp, setShowHelp]     = useState(false);
+
+  const loadProfile = useCallback(async () => {
+    const p = await fetchProfile(userId);
+    setProfile(p);
+  }, [userId]);
 
   useEffect(() => {
-    fetchProfile(userId).then(p => setProfile(p));
+    loadProfile();
     fetchFiles(userId).then(f => setFileCount(f.length));
   }, [userId, refreshKey]);
 
   const usedPct = profile ? Math.min((profile.storage_used / profile.storage_limit) * 100, 100).toFixed(1) : 0;
-  const displayName = profile?.full_name || user?.user_metadata?.full_name || user?.email?.split("@")[0] || "User";
-  const nameParts = displayName.trim().split(" ");
+  const displayName = (profile?.full_name || user?.email?.split("@")[0] || "User").trim();
+  const nameParts = displayName.split(" ");
+  const initials = nameParts.map(w => w[0]).join("").slice(0,2).toUpperCase();
 
   return (
     <div className="home-page prof-page">
       <div className="prof-hdr">
-        <div className="prof-avatar"><svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
-        <p className="prof-name">{nameParts[0]} <span style={{color:"var(--tl)"}}>{nameParts.slice(1).join(" ")}</span></p>
+        <div className="prof-avatar">
+          <span className="prof-avatar-initials">{initials}</span>
+        </div>
+        <p className="prof-name">
+          {nameParts[0]} {nameParts.length > 1 && <span style={{color:"var(--tl)"}}>{nameParts.slice(1).join(" ")}</span>}
+        </p>
         <p className="prof-email">{user?.email}</p>
       </div>
       <div className="prof-body">
         <div className="sheet-pill"/>
         <div className="prof-stats">
-          {[[fileCount.toString(),"Files"],[profile?formatGB(profile.storage_used):"—","Used"],[profile?`${usedPct}%`:"—","Full"]].map(([v,l]) => (
+          {[
+            [fileCount.toString(), "Files"],
+            [profile ? formatGB(profile.storage_used) : "—", "Used"],
+            [profile ? `${usedPct}%` : "—", "Full"],
+          ].map(([v,l]) => (
             <div className="prof-stat" key={l}><p className="pstat-val">{v}</p><p className="pstat-lbl">{l}</p></div>
           ))}
         </div>
@@ -1591,13 +1692,13 @@ function ProfileBody({ user, userId, onLogout, showToast, refreshKey }) {
         )}
         <div className="menu-list">
           {[
-            { icon:<><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></>, label:"Edit Profile", sub:"Update name & email", color:"teal" },
-            { icon:<><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></>, label:"Privacy & Security", sub:"Password, 2FA", color:"blue" },
-            { icon:<><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></>, label:"Notifications", sub:"Manage alerts", color:"violet" },
-            { icon:<><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></>, label:"Storage Plan", sub:"Upgrade to 1 TB", color:"rose" },
-            { icon:<><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 010 14.14M4.93 4.93a10 10 0 000 14.14"/></>, label:"Help & Support", sub:"Get help anytime", color:"amber" },
+            { icon:<><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></>, label:"Edit Profile",       sub:"Update your name",          color:"teal",   fn:() => setShowEdit(true) },
+            { icon:<><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></>,                           label:"Privacy & Security",     sub:"Change password",           color:"blue",   fn:() => setShowPrivacy(true) },
+            { icon:<><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></>,                  label:"Notifications",          sub:"Manage alerts",             color:"violet", fn:() => showToast("🔔 No new notifications") },
+            { icon:<><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></>, label:"Storage Plan", sub:`${formatGB(profile?.storage_limit||0)} allocated`, color:"rose", fn:() => showToast("💾 Contact admin to upgrade storage") },
+            { icon:<><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 010 14.14M4.93 4.93a10 10 0 000 14.14"/></>,        label:"Help & Support",         sub:"FAQs & contact",            color:"amber",  fn:() => setShowHelp(true) },
           ].map((m,i) => (
-            <div className="menu-row" key={i} onClick={() => showToast(`⚙️ Opening ${m.label}…`)}>
+            <div className="menu-row" key={i} onClick={m.fn}>
               <div className={`menu-row-icon qa-icon ${m.color}`}><svg viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none">{m.icon}</svg></div>
               <div className="menu-row-info"><p className="menu-row-title">{m.label}</p><p className="menu-row-sub">{m.sub}</p></div>
               <span className="menu-row-arrow">›</span>
@@ -1605,21 +1706,27 @@ function ProfileBody({ user, userId, onLogout, showToast, refreshKey }) {
           ))}
         </div>
         <div className="logout-row">
-          <button className="logout-btn" onClick={() => setShowLogoutConfirm(true)}>Log Out</button>
+          <button className="logout-btn" onClick={() => setShowLogout(true)}>Log Out</button>
         </div>
       </div>
-      {showLogoutConfirm && <LogoutConfirm onCancel={() => setShowLogoutConfirm(false)} onConfirm={onLogout}/>}
+
+      {showLogout  && <LogoutConfirm onCancel={() => setShowLogout(false)} onConfirm={onLogout}/>}
+      {showEdit    && <EditProfileSheet profile={profile} user={user} onClose={() => setShowEdit(false)} onSaved={loadProfile} showToast={showToast}/>}
+      {showPrivacy && <PrivacySecuritySheet user={user} onClose={() => setShowPrivacy(false)} showToast={showToast}/>}
+      {showHelp    && <HelpSupportSheet onClose={() => setShowHelp(false)}/>}
     </div>
   );
 }
 
-/* ── HOME PAGE ── */
+/* ════════════════════════════════
+   HOME PAGE (shell + nav)
+════════════════════════════════ */
 function HomePage({ user, onLogout, isAdmin }) {
-  const [nav,     setNav]     = useState("home");
-  const [toast,   setToast]   = useState("");
+  const [nav,     setNav]    = useState("home");
+  const [toast,   setToast]  = useState("");
   const [profile, setProfile] = useState(null);
   const [refresh, setRefresh] = useState(0);
-  const [showUp,  setShowUp]  = useState(false);
+  const [showUp,  setShowUp] = useState(false);
   const userId = user.id;
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 2400); };
@@ -1628,7 +1735,7 @@ function HomePage({ user, onLogout, isAdmin }) {
   useEffect(() => { fetchProfile(userId).then(p => setProfile(p)); }, [userId, refresh]);
 
   const usedPct = profile ? Math.min((profile.storage_used / profile.storage_limit) * 100, 100) : 0;
-  const displayName = (profile?.full_name || user?.user_metadata?.full_name || user?.email?.split("@")[0] || "User").trim().split(" ");
+  const displayName = (profile?.full_name || user?.email?.split("@")[0] || "User").trim().split(" ");
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
@@ -1644,6 +1751,9 @@ function HomePage({ user, onLogout, isAdmin }) {
   ];
 
   const showHeader = nav !== "profile" && nav !== "admin";
+
+  // Expose navigate to children via callback
+  const handleNavigate = (page) => setNav(page);
 
   return (
     <div className="home-page">
@@ -1679,7 +1789,7 @@ function HomePage({ user, onLogout, isAdmin }) {
         </div>
       )}
 
-      {nav==="home"    && <HomeBody    userId={userId} showToast={showToast} onUploadDone={onUploadDone} refreshKey={refresh}/>}
+      {nav==="home"    && <HomeBody    userId={userId} showToast={showToast} onUploadDone={onUploadDone} refreshKey={refresh} onNavigate={handleNavigate}/>}
       {nav==="files"   && <FilesBody   userId={userId} showToast={showToast} onUploadDone={onUploadDone} refreshKey={refresh}/>}
       {nav==="gallery" && <GalleryBody userId={userId} showToast={showToast} refreshKey={refresh}/>}
       {nav==="profile" && <ProfileBody user={user} userId={userId} onLogout={onLogout} showToast={showToast} refreshKey={refresh}/>}
@@ -1699,20 +1809,22 @@ function HomePage({ user, onLogout, isAdmin }) {
         </div>
         {navR.map(n => (
           <div className="nav-item" key={n.id} onClick={() => setNav(n.id)}>
-            <div className={`nav-icon-wrap ${nav===n.id ? (n.admin ? "active-admin" : "active") : ""}`}>
+            <div className={`nav-icon-wrap ${nav===n.id ? (n.admin?"active-admin":"active") : ""}`}>
               <svg viewBox="0 0 24 24">{n.icon}</svg>
             </div>
-            <span className={`nav-lbl ${nav===n.id ? (n.admin ? "active-admin" : "active") : ""}`}>{n.label}</span>
+            <span className={`nav-lbl ${nav===n.id ? (n.admin?"active-admin":"active") : ""}`}>{n.label}</span>
           </div>
         ))}
       </div>
 
-      {showUp && <UploadSheet onClose={() => setShowUp(false)} userId={userId} onUploaded={() => { onUploadDone(); }} showToast={showToast}/>}
+      {showUp && <UploadSheet onClose={() => setShowUp(false)} userId={userId} onUploaded={onUploadDone} showToast={showToast}/>}
     </div>
   );
 }
 
-/* ── ROOT ── */
+/* ════════════════════════════════
+   ROOT
+════════════════════════════════ */
 export default function App() {
   const [user,    setUser]    = useState(undefined);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -1720,27 +1832,43 @@ export default function App() {
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       const u = session?.user ?? null;
-      setUser(u);
       if (u) {
         const p = await fetchProfile(u.id);
+        // Block disabled or deleted users immediately
+        if (!p || p.is_disabled) {
+          await supabase.auth.signOut();
+          setUser(null);
+          return;
+        }
         setIsAdmin(!!p?.is_admin);
       }
+      setUser(u);
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_e, session) => {
       const u = session?.user ?? null;
-      setUser(u);
       if (u) {
         const p = await fetchProfile(u.id);
+        if (!p || p.is_disabled) {
+          await supabase.auth.signOut();
+          setUser(null);
+          setIsAdmin(false);
+          return;
+        }
         setIsAdmin(!!p?.is_admin);
+        setUser(u);
       } else {
         setIsAdmin(false);
+        setUser(null);
       }
     });
     return () => subscription.unsubscribe();
   }, []);
 
-
-  const handleLogout = async () => { await supabase.auth.signOut(); setUser(null); setIsAdmin(false); };
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+    setIsAdmin(false);
+  };
 
   if (user === undefined) {
     return (
@@ -1763,7 +1891,7 @@ export default function App() {
       <style>{styles}</style>
       <div className="cv-app">
         {!user
-          ? <AuthPage onAuth={async (u) => { setUser(u); const p = await fetchProfile(u.id); setIsAdmin(!!p?.is_admin); }}/>
+          ? <AuthPage onAuth={async (u) => { const p = await fetchProfile(u.id); setIsAdmin(!!p?.is_admin); setUser(u); }}/>
           : <HomePage user={user} onLogout={handleLogout} isAdmin={isAdmin}/>
         }
       </div>
