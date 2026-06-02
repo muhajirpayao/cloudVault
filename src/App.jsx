@@ -561,7 +561,7 @@ function AuthPage({ onAuth }) {
       <div className="auth-card">
         <div className="auth-brand">
           <div className="auth-brand-icon"><CloudIcon/></div>
-          <span className="auth-brand-name">Cloud<span>Vault</span></span>
+          <span className="auth-brand-name">Zharm<span>Vault</span></span>
         </div>
         <h2 className="auth-headline">Welcome Back 👋</h2>
         <p className="auth-sub">Sign in with your credentials to access your files and storage.</p>
@@ -842,6 +842,9 @@ function EditUserSheet({ profile, onClose, onSaved, showToast }) {
           <label>Full Name</label>
           <input className="form-input" value={name} onChange={e => setName(e.target.value)} placeholder="Jane Doe"/>
         </div>
+
+    
+
         <div className="form-field">
           <label>Storage Limit (GB)</label>
           <input className="form-input" type="number" min="1" max="1000" value={limit} onChange={e => setLimit(e.target.value)} placeholder="5"/>
@@ -1457,7 +1460,7 @@ function HomePage({ user, onLogout, isAdmin }) {
           <div className="hdr-row">
             <div className="hdr-brand">
               <div className="hdr-brand-icon"><CloudIcon/></div>
-              <span className="hdr-brand-name">Cloud<span>Vault</span></span>
+              <span className="hdr-brand-name">Zharm<span>Vault</span></span>
             </div>
             <div className="hdr-notif" onClick={() => showToast("🔔 No new notifications")}>
               <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
@@ -1554,7 +1557,7 @@ export default function App() {
           <div className="page-loader">
             <div className="page-loader-inner">
               <div className="spin" style={{width:36,height:36,borderWidth:3,borderColor:"rgba(0,201,167,0.2)",borderTopColor:"var(--teal)"}}/>
-              <span>CloudVault</span>
+              <span>ZharmVault</span>
             </div>
           </div>
         </div>
