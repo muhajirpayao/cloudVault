@@ -72,26 +72,6 @@ async function uploadFile(file, userId) {
   }
 }
 
-async function uploadToGDrive(file, userId) {
-  try {
-    const form = new FormData();
-    form.append("file", file);
-    const { data: { session } } = await supabase.auth.getSession();
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/gdrive-upload`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${session.access_token}` },
-      body: form,
-    });
-    const drive = await res.json();
-    console.log('[gdrive response]', drive); // ← ADD THIS
-    if (drive.error) throw new Error(drive.error);
-    // ... rest unchanged
-  } catch(e) {
-    console.error('[gdrive upload error]', e); // ← AND THIS
-    throw e;
-  }
-}
-
 async function getFileUrl(record) {
   if (record.storage_provider === "gdrive") {
     return record.gdrive_download_link;
@@ -111,8 +91,6 @@ async function downloadFile(record) {
 }
 async function deleteFile(record) {
   if (record.storage_provider === "gdrive") {
-    // GDrive delete via edge function or just remove DB record
-    // For now we remove from DB; the file stays on Drive (needs service-role to delete)
     await supabase.from("files").delete().eq("id", record.id);
   } else {
     await supabase.storage.from(record.bucket).remove([record.storage_path]);
@@ -281,7 +259,6 @@ html,body{height:100%;overflow-x:hidden}
 .qa-icon.rose{background:linear-gradient(135deg,#FFE4E6,#FECDD3)}.qa-icon.rose svg{stroke:#BE123C}
 .qa-icon.amber{background:linear-gradient(135deg,#FEF9C3,#FEF08A)}.qa-icon.amber svg{stroke:#A16207}
 .qa-icon.indigo{background:linear-gradient(135deg,#E0E7FF,#C7D2FE)}.qa-icon.indigo svg{stroke:#4338CA}
-.qa-icon.gdrive{background:linear-gradient(135deg,#DBEAFE,#BFDBFE)}.qa-icon.gdrive svg{stroke:#4285F4}
 .qa-label{font-size:clamp(9px,2.6vw,11px);font-weight:600;color:#374151;text-align:center;line-height:1.2}
 
 /* FILE LIST */
@@ -339,12 +316,6 @@ html,body{height:100%;overflow-x:hidden}
 .sheet-handle{width:34px;height:4px;background:var(--border);border-radius:99px;margin:0 auto clamp(16px,4.5vw,22px)}
 .sheet-title{font-family:var(--nunito);font-size:clamp(16px,4.5vw,20px);font-weight:800;color:var(--text);margin-bottom:clamp(14px,4vw,20px)}
 
-/* PROVIDER TOGGLE */
-.provider-toggle{display:flex;gap:8px;background:#f5f6f8;border-radius:14px;padding:4px;margin-bottom:16px}
-.provider-tab{flex:1;padding:clamp(8px,2.5vw,10px) 8px;border-radius:11px;border:none;background:transparent;font-family:var(--nunito);font-size:clamp(11px,3vw,13px);font-weight:700;color:var(--muted);cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:5px}
-.provider-tab.active-supabase{background:var(--white);color:var(--teal2);box-shadow:0 2px 8px rgba(0,0,0,0.08)}
-.provider-tab.active-gdrive{background:var(--white);color:#4285F4;box-shadow:0 2px 8px rgba(0,0,0,0.08)}
-
 /* UPLOAD */
 .upload-opts{display:grid;grid-template-columns:1fr 1fr;gap:clamp(10px,3vw,14px)}
 .upload-opt{display:flex;flex-direction:column;align-items:center;gap:clamp(8px,2.5vw,11px);padding:clamp(14px,4vw,20px) clamp(10px,3vw,16px);border-radius:clamp(14px,4vw,18px);cursor:pointer;transition:transform 0.15s,box-shadow 0.15s;border:1.5px solid var(--border)}
@@ -362,7 +333,6 @@ html,body{height:100%;overflow-x:hidden}
 .queue-item-status{flex-shrink:0;font-size:16px}
 .queue-remove{flex-shrink:0;width:22px;height:22px;border-radius:50%;background:#fee2e2;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#e11d48;font-size:14px;font-weight:700;line-height:1}
 .upload-all-btn{width:100%;padding:clamp(13px,3.8vw,16px);background:linear-gradient(135deg,var(--teal) 0%,var(--teal3) 100%);border:none;border-radius:99px;font-family:var(--nunito);font-size:clamp(14px,4vw,16px);font-weight:700;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 6px 22px rgba(0,180,160,0.35);margin-top:12px}
-.upload-all-btn.gdrive-btn{background:linear-gradient(135deg,#4285F4,#34A853);box-shadow:0 6px 22px rgba(66,133,244,0.35)}
 .upload-all-btn:disabled{opacity:0.6;cursor:not-allowed}
 
 /* PROGRESS */
@@ -370,7 +340,6 @@ html,body{height:100%;overflow-x:hidden}
 .prog-bar-label{font-size:clamp(12px,3.2vw,13px);font-weight:600;color:#059669;margin-bottom:8px;display:flex;justify-content:space-between}
 .prog-bar-track{height:7px;background:#dcfce7;border-radius:99px;overflow:hidden}
 .prog-bar-fill{height:100%;background:linear-gradient(90deg,var(--teal),var(--teal3));border-radius:99px;transition:width 0.3s ease}
-.prog-bar-fill.gdrive{background:linear-gradient(90deg,#4285F4,#34A853)}
 
 /* FILE VIEWER */
 .viewer-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:300;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:clamp(16px,5vw,28px);animation:fadeIn 0.2s ease}
@@ -737,7 +706,6 @@ function FileOptions({ record, onClose, onView, onDownload, onDelete }) {
         <p style={{fontSize:"clamp(13px,3.6vw,15px)",marginBottom:6,fontWeight:700,wordBreak:"break-all",fontFamily:"var(--nunito)",color:"var(--text)"}}>{record.original_name}</p>
         <p style={{fontSize:"clamp(10px,2.8vw,12px)",color:"var(--muted)",marginBottom:16}}>
           {formatSize(record.size)} · {timeAgo(record.created_at)}
-          {record.storage_provider === "gdrive" && <span className="file-provider-badge badge-gdrive" style={{marginLeft:6}}>GDrive</span>}
         </p>
         <div className="opt-list">
           {[
@@ -758,10 +726,9 @@ function FileOptions({ record, onClose, onView, onDownload, onDelete }) {
 }
 
 /* ════════════════════════════════
-   UPLOAD SHEET  ← provider toggle lives HERE (inside the component)
+   UPLOAD SHEET — Supabase only, no provider toggle
 ════════════════════════════════ */
 function UploadSheet({ onClose, userId, onUploaded, showToast }) {
-  const [provider, setProvider] = useState("supabase"); // ← CORRECT LOCATION
   const [queue, setQueue]       = useState([]);
   const [busy, setBusy]         = useState(false);
   const [current, setCurrent]   = useState("");
@@ -784,14 +751,13 @@ function UploadSheet({ onClose, userId, onUploaded, showToast }) {
     if (queue.length === 0) return;
     setBusy(true); setDoneCount(0);
     let done = 0;
-    const uploadFn = provider === "gdrive" ? uploadToGDrive : uploadFile;
     for (let i = 0; i < queue.length; i++) {
       const item = queue[i];
       if (item.status === "done") { done++; continue; }
       setCurrent(item.file.name);
       setQueue(prev => prev.map((q, idx) => idx === i ? { ...q, status: "uploading" } : q));
       try {
-        await uploadFn(item.file, userId);
+        await uploadFile(item.file, userId);
         done++; setDoneCount(done);
         setQueue(prev => prev.map((q, idx) => idx === i ? { ...q, status: "done" } : q));
       } catch (e) {
@@ -799,7 +765,7 @@ function UploadSheet({ onClose, userId, onUploaded, showToast }) {
       }
     }
     setBusy(false); setCurrent("");
-    showToast(`✅ ${done} file${done !== 1 ? "s" : ""} uploaded to ${provider === "gdrive" ? "Google Drive" : "Supabase"}!`);
+    showToast(`✅ ${done} file${done !== 1 ? "s" : ""} uploaded!`);
     onUploaded(); setTimeout(() => onClose(), 700);
   };
 
@@ -818,35 +784,13 @@ function UploadSheet({ onClose, userId, onUploaded, showToast }) {
         <div className="sheet-handle"/>
         <p className="sheet-title">Upload Files</p>
 
-        {/* PROVIDER TOGGLE — properly inside the component */}
-        {!busy && (
-          <div className="provider-toggle">
-            <button
-              className={`provider-tab ${provider==="supabase"?"active-supabase":""}`}
-              onClick={() => setProvider("supabase")}>
-              ☁️ Supabase
-            </button>
-            <button
-              className={`provider-tab ${provider==="gdrive"?"active-gdrive":""}`}
-              onClick={() => setProvider("gdrive")}>
-              📁 Google Drive
-            </button>
-          </div>
-        )}
-
-        {provider === "gdrive" && !busy && (
-          <div className="info-box" style={{marginBottom:12,fontSize:"clamp(10px,2.8vw,11px)"}}>
-            <strong>Google Drive</strong> — Files go to your connected Drive account (15 GB free per account).
-          </div>
-        )}
-
         {!busy && (
           <div className="upload-opts" style={{marginBottom: queue.length ? 16 : 0}}>
             {[
-              { label:"Images", sub:"Select multiple", color:"teal", accept:"image/*", ref:imgRef, icon:<><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></> },
-              { label:"Videos", sub:"Select multiple", color:"violet", accept:"video/*", ref:vidRef, icon:<><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></> },
-              { label:"Documents", sub:"PDF, DOC, ZIP…", color:"blue", accept:".pdf,.doc,.docx,.txt,.xlsx,.pptx,.zip", ref:docRef, icon:<><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></> },
-              { label:"Any File", sub:"All types", color:"rose", accept:"*", ref:null, icon:<><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></> },
+              { label:"Images",    sub:"Select multiple",   color:"teal",   accept:"image/*",                                           ref:imgRef, icon:<><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></> },
+              { label:"Videos",    sub:"Select multiple",   color:"violet", accept:"video/*",                                           ref:vidRef, icon:<><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></> },
+              { label:"Documents", sub:"PDF, DOC, ZIP…",    color:"blue",   accept:".pdf,.doc,.docx,.txt,.xlsx,.pptx,.zip",             ref:docRef, icon:<><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></> },
+              { label:"Any File",  sub:"All types",         color:"rose",   accept:"*",                                                 ref:null,   icon:<><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></> },
             ].map((o, i) => (
               <div key={i} className="upload-opt" onClick={() => {
                 if (o.ref) { o.ref.current.click(); return; }
@@ -862,6 +806,7 @@ function UploadSheet({ onClose, userId, onUploaded, showToast }) {
             ))}
           </div>
         )}
+
         {queue.length > 0 && (
           <>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
@@ -875,7 +820,7 @@ function UploadSheet({ onClose, userId, onUploaded, showToast }) {
                   <span>{doneCount}/{totalCount}</span>
                 </div>
                 <div className="prog-bar-track">
-                  <div className={`prog-bar-fill ${provider==="gdrive"?"gdrive":""}`} style={{width:`${Math.round((doneCount/totalCount)*100)}%`}}/>
+                  <div className="prog-bar-fill" style={{width:`${Math.round((doneCount/totalCount)*100)}%`}}/>
                 </div>
               </div>
             )}
@@ -890,11 +835,11 @@ function UploadSheet({ onClose, userId, onUploaded, showToast }) {
               ))}
             </div>
             {!busy && pendingCount > 0 && (
-              <button className={`upload-all-btn ${provider==="gdrive"?"gdrive-btn":""}`} onClick={uploadAll}>
+              <button className="upload-all-btn" onClick={uploadAll}>
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
                 </svg>
-                Upload {pendingCount} to {provider === "gdrive" ? "Google Drive" : "Supabase"}
+                Upload {pendingCount} file{pendingCount !== 1 ? "s" : ""}
               </button>
             )}
           </>
@@ -1036,12 +981,12 @@ function PrivacySecuritySheet({ user, onClose, showToast }) {
 
 function HelpSupportSheet({ onClose }) {
   const faqs = [
-    { q:"How do I upload files?", a:"Tap the + button at the bottom center. In the upload sheet, choose Supabase or Google Drive as your storage provider, then select your files." },
-    { q:"What's the difference between Supabase and Google Drive storage?", a:"Supabase is your app's built-in storage. Google Drive uses your Google account's 15 GB free storage. You can use both." },
+    { q:"How do I upload files?", a:"Tap the + button at the bottom center. In the upload sheet, select your files by type (Images, Videos, Documents, or Any File)." },
     { q:"What file types are supported?", a:"All types: images (JPG, PNG, GIF, WebP), videos (MP4, MOV, AVI), and documents (PDF, DOC, DOCX, XLSX, PPTX, ZIP, TXT)." },
     { q:"How do I share a file?", a:"Open a file, tap the ··· menu, then tap 'Share Link'. The URL will be copied to your clipboard." },
     { q:"Can I change my password?", a:"Yes! Go to Profile → Privacy & Security → Change Password." },
     { q:"Who can access my files?", a:"Only you can access your files. Admins can view and manage all files in the system." },
+    { q:"Where are my files stored?", a:"All files are stored securely on Supabase cloud storage." },
   ];
   const [open, setOpen] = useState(null);
   return (
@@ -1133,78 +1078,6 @@ function EditUserSheet({ profile, onClose, onSaved, showToast }) {
 }
 
 /* ════════════════════════════════
-   ADMIN USERS TAB
-════════════════════════════════ */
-function AdminUsersTab({ showToast, currentUserId }) {
-  const [profiles, setProfiles]   = useState([]);
-  const [loading,  setLoading]    = useState(true);
-  const [query,    setQuery]      = useState("");
-  const [editTarget, setEditTarget] = useState(undefined);
-  const [deleteTarget, setDeleteTarget] = useState(null);
-  const load = useCallback(async () => {
-    setLoading(true);
-    try { setProfiles(await adminFetchAllProfiles()); }
-    catch (e) { showToast("❌ " + e.message); }
-    finally { setLoading(false); }
-  }, []);
-  useEffect(() => { load(); }, [load]);
-  const visible = profiles.filter(p => (p.full_name||"").toLowerCase().includes(query.toLowerCase()) || (p.email||"").toLowerCase().includes(query.toLowerCase()));
-  const handleToggleDisable = async (p) => {
-    try { await adminUpdateProfile(p.id, { is_disabled: !p.is_disabled }); showToast(p.is_disabled?"✅ User enabled":"⛔ User disabled"); load(); }
-    catch (e) { showToast("❌ " + e.message); }
-  };
-  const handleDelete = async (p) => {
-    try { await adminDeleteProfile(p.id); showToast("🗑️ User deleted"); setDeleteTarget(null); load(); }
-    catch (e) { showToast("❌ " + e.message); }
-  };
-  const initials = (name) => (name||"?").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
-  return (
-    <>
-      <div style={{display:"flex",gap:10,marginBottom:"clamp(14px,4vw,20px)"}}>
-        <div className="search-bar" style={{flex:1}}><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input placeholder="Search users…" value={query} onChange={e => setQuery(e.target.value)}/></div>
-        <button style={{flexShrink:0,padding:"0 14px",height:"44px",background:"linear-gradient(135deg,var(--admin),var(--admin2))",border:"none",borderRadius:12,color:"#fff",fontFamily:"var(--nunito)",fontSize:"clamp(12px,3.2vw,13px)",fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}} onClick={() => setEditTarget(null)}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New User
-        </button>
-      </div>
-      {loading ? <div style={{display:"flex",justifyContent:"center",padding:"32px 0"}}><div className="spin spin-admin" style={{width:32,height:32}}/></div>
-      : visible.length === 0 ? <div className="empty"><div className="empty-icon"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div><h3>No users found</h3><p>{query?"Try a different search":"No profiles in the database"}</p></div>
-      : visible.map(p => {
-        const usedPct = p.storage_limit ? Math.min((p.storage_used||0)/p.storage_limit*100,100) : 0;
-        const isSelf = p.id === currentUserId;
-        return (
-          <div className={`user-card ${p.is_disabled?"disabled-user":""}`} key={p.id}>
-            <div className="user-card-top">
-              <div className="user-avatar">{initials(p.full_name)}</div>
-              <div className="user-info">
-                <p className="user-name">{p.full_name||"Unnamed"} {isSelf&&<span style={{fontSize:10,color:"var(--teal2)",fontWeight:700}}>(you)</span>}</p>
-                <p className="user-email">{p.email||p.id}</p>
-                <div className="user-badges">
-                  {p.is_admin&&<span className="badge badge-admin">Admin</span>}
-                  {p.is_disabled?<span className="badge badge-disabled">Disabled</span>:<span className="badge badge-active">Active</span>}
-                </div>
-              </div>
-            </div>
-            <div className="user-card-meta">
-              <span className="user-meta-item"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>{formatSize(p.storage_used||0)} used</span>
-              <span className="user-meta-item"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>{timeAgo(p.created_at)}</span>
-              <span className="user-meta-item"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>{formatGB(p.storage_limit||0)} limit</span>
-            </div>
-            <div className="user-stor-bar"><div className="user-stor-fill" style={{width:`${usedPct}%`}}/></div>
-            <div className="user-actions">
-              <button className="ua-btn edit" onClick={() => setEditTarget(p)}><svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit</button>
-              {!isSelf && <button className={`ua-btn ${p.is_disabled?"enable":"disable"}`} onClick={() => handleToggleDisable(p)}>{p.is_disabled?<><svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>Enable</>:<><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>Disable</>}</button>}
-              {!isSelf && <button className="ua-btn del" onClick={() => setDeleteTarget(p)}><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>Delete</button>}
-            </div>
-          </div>
-        );
-      })}
-      {editTarget !== undefined && <EditUserSheet profile={editTarget} onClose={() => setEditTarget(undefined)} onSaved={load} showToast={showToast}/>}
-      {deleteTarget && <DeleteConfirmSheet title="Delete user?" sub={`Permanently delete ${deleteTarget.full_name||"this user"} and all their files.`} onClose={() => setDeleteTarget(null)} onConfirm={() => handleDelete(deleteTarget)}/>}
-    </>
-  );
-}
-
-/* ════════════════════════════════
    ADMIN FILES TAB
 ════════════════════════════════ */
 function AdminFilesTab({ showToast }) {
@@ -1238,7 +1111,7 @@ function AdminFilesTab({ showToast }) {
             <div className={`file-thumb ft-${getFileType(f.category)}`} style={{cursor:"pointer"}} onClick={() => setViewer(f)}><FileThumb type={getFileType(f.category)}/></div>
             <div className="file-info" style={{cursor:"pointer"}} onClick={() => setViewer(f)}>
               <p className="file-name">{f.original_name}</p>
-              <p className="admin-file-owner">uid: {f.user_id?.slice(0,8)}… {f.storage_provider==="gdrive"&&<span className="file-provider-badge badge-gdrive">GDrive</span>}</p>
+              <p className="admin-file-owner">uid: {f.user_id?.slice(0,8)}…</p>
               <p className="file-meta">{formatSize(f.size)} · {timeAgo(f.created_at)}</p>
             </div>
             <button className="admin-del-btn" onClick={() => setDeleteTarget(f)}><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg></button>
@@ -1251,142 +1124,85 @@ function AdminFilesTab({ showToast }) {
 }
 
 /* ════════════════════════════════
-   ADMIN STORAGE TAB  ← NEW
+   ADMIN USERS TAB
 ════════════════════════════════ */
-function AdminStorageTab({ showToast }) {
+function AdminUsersTab({ showToast, currentUserId }) {
   const [profiles, setProfiles] = useState([]);
-  const [loading,  setLoading]  = useState(true);
-
-  useEffect(() => {
-    Promise.all([adminFetchAllProfiles(), adminFetchAllFiles()])
-      .then(([p]) => setProfiles(p))
-      .catch(e => showToast("❌ " + e.message))
-      .finally(() => setLoading(false));
+  const [loading, setLoading]   = useState(true);
+  const [query, setQuery]       = useState("");
+  const [editTarget, setEditTarget]     = useState(undefined);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try { setProfiles(await adminFetchAllProfiles()); }
+    catch (e) { showToast("❌ " + e.message); }
+    finally { setLoading(false); }
   }, []);
-
-  if (loading) return (
-    <div style={{display:"flex",justifyContent:"center",padding:"40px 0"}}>
-      <div className="spin spin-admin" style={{width:32,height:32}}/>
-    </div>
+  useEffect(() => { load(); }, [load]);
+  const visible = profiles.filter(p =>
+    (p.full_name||"").toLowerCase().includes(query.toLowerCase()) ||
+    (p.email||"").toLowerCase().includes(query.toLowerCase())
   );
-
-  const totalLimit  = profiles.reduce((s, p) => s + (p.storage_limit || 0), 0);
-  const totalUsed   = profiles.reduce((s, p) => s + (p.storage_used  || 0), 0);
-  const totalGdrive = profiles.reduce((s, p) => s + (p.gdrive_used   || 0), 0);
-  const totalSupa   = Math.max(0, totalUsed - totalGdrive);
-  const totalFree   = Math.max(0, totalLimit - totalUsed);
-  const usedPct     = totalLimit ? Math.min((totalUsed / totalLimit) * 100, 100) : 0;
-  const initials    = n => (n||"?").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
-  const sorted      = [...profiles].sort((a,b) => (b.storage_used||0) - (a.storage_used||0));
-
+  const handleToggleDisable = async (p) => {
+    try {
+      await adminUpdateProfile(p.id, { is_disabled: !p.is_disabled });
+      showToast(p.is_disabled ? "✅ User enabled" : "⛔ User disabled");
+      load();
+    } catch (e) { showToast("❌ " + e.message); }
+  };
+  const handleDelete = async (p) => {
+    try { await adminDeleteProfile(p.id); showToast("🗑️ User deleted"); setDeleteTarget(null); load(); }
+    catch (e) { showToast("❌ " + e.message); }
+  };
   return (
-    <div>
-      {/* ── 4 stat cards ── */}
-      <div className="stor-stat-grid">
-        {[
-          { label:"Total Used",    value:formatGB(totalUsed),   sub:`of ${formatGB(totalLimit)} allocated`, color:"var(--admin)" },
-          { label:"Free Space",    value:formatGB(totalFree),   sub:`${(100-usedPct).toFixed(1)}% available`, color:"#059669" },
-          { label:"Supabase",      value:formatGB(totalSupa),   sub:"built-in storage",   color:"var(--teal2)" },
-          { label:"Google Drive",  value:formatGB(totalGdrive), sub:"connected drives",   color:"#4285F4" },
-        ].map(c => (
-          <div className="stor-stat-card" key={c.label}>
-            <p className="stor-stat-label">{c.label}</p>
-            <p className="stor-stat-value" style={{color:c.color}}>{c.value}</p>
-            <p className="stor-stat-sub">{c.sub}</p>
-          </div>
-        ))}
+    <>
+      <div style={{display:"flex",gap:8,marginBottom:16}}>
+        <div className="search-bar" style={{flex:1}}><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input placeholder="Search users…" value={query} onChange={e => setQuery(e.target.value)}/></div>
+        <button style={{flexShrink:0,padding:"0 16px",background:"linear-gradient(135deg,var(--admin),var(--admin2))",border:"none",borderRadius:99,fontFamily:"var(--nunito)",fontSize:12,fontWeight:700,color:"#fff",cursor:"pointer",whiteSpace:"nowrap"}} onClick={() => setEditTarget(null)}>+ New</button>
       </div>
-
-      {/* ── Overall bar ── */}
-      <div className="stor-overview-card">
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-          <span style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>Platform usage</span>
-          <span style={{fontSize:12,fontWeight:600,color:"var(--admin)"}}>{usedPct.toFixed(1)}%</span>
-        </div>
-        {/* segmented bar */}
-        <div style={{height:10,background:"#e5e7eb",borderRadius:99,overflow:"hidden",marginBottom:10,display:"flex"}}>
-          {totalUsed > 0 && (
-            <>
-              <div style={{width:`${totalLimit ? (totalSupa/totalLimit)*100 : 0}%`,background:"var(--teal)",borderRadius:"99px 0 0 99px",transition:"width 0.6s"}}/>
-              <div style={{width:`${totalLimit ? (totalGdrive/totalLimit)*100 : 0}%`,background:"#4285F4",borderRadius:totalGdrive>0&&totalSupa===0?"99px":"0 99px 99px 0",transition:"width 0.6s"}}/>
-            </>
-          )}
-        </div>
-        <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
-          {[
-            { label:"Supabase",     color:"var(--teal)",  val:totalSupa   },
-            { label:"Google Drive", color:"#4285F4",      val:totalGdrive },
-            { label:"Free",         color:"#e5e7eb",      val:totalFree   },
-          ].map(b => (
-            <div key={b.label} style={{display:"flex",alignItems:"center",gap:6}}>
-              <div style={{width:10,height:10,borderRadius:99,background:b.color,border:b.color==="#e5e7eb"?"1px solid #d1d5db":"none",flexShrink:0}}/>
-              <span style={{fontSize:11,color:"var(--muted)"}}>{b.label} <strong style={{color:"var(--text)"}}>{formatGB(b.val)}</strong></span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* ── Per-user breakdown ── */}
-      <p style={{fontFamily:"var(--nunito)",fontSize:"clamp(13px,3.8vw,15px)",fontWeight:800,color:"var(--text)",marginBottom:12}}>
-        Per-user breakdown
-      </p>
-
-      {sorted.length === 0 && (
-        <div className="empty"><div className="empty-icon"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div><h3>No users yet</h3></div>
-      )}
-
-      {sorted.map(p => {
-        const pct      = p.storage_limit ? Math.min((p.storage_used||0)/p.storage_limit*100, 100) : 0;
-        const barColor = pct > 90 ? "#e11d48" : pct > 70 ? "#f59e0b" : "var(--admin)";
-        const gdriveGB = p.gdrive_used || 0;
-        const supaGB   = Math.max(0, (p.storage_used||0) - gdriveGB);
+      {loading ? <div style={{display:"flex",justifyContent:"center",padding:"32px 0"}}><div className="spin spin-admin" style={{width:32,height:32}}/></div>
+      : visible.length === 0 ? <div className="empty"><div className="empty-icon"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div><h3>No users found</h3></div>
+      : visible.map(p => {
+        const usedPct = p.storage_limit ? Math.min((p.storage_used/p.storage_limit)*100,100) : 0;
+        const initials = (p.full_name||p.email||"?").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
         return (
-          <div className="stor-user-card" key={p.id}>
-            {/* header row */}
-            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-              <div className="user-avatar" style={{width:36,height:36,fontSize:13,flexShrink:0}}>{initials(p.full_name)}</div>
-              <div style={{flex:1,minWidth:0}}>
-                <p style={{fontSize:13,fontWeight:700,color:"var(--text)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.full_name||"Unnamed"}</p>
-                <p style={{fontSize:11,color:"var(--muted)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.email}</p>
+          <div className={`user-card ${p.is_disabled?"disabled-user":""}`} key={p.id}>
+            <div className="user-card-top">
+              <div className="user-avatar">{initials}</div>
+              <div className="user-info">
+                <p className="user-name">{p.full_name||"—"}</p>
+                <p className="user-email">{p.email}</p>
+                <div className="user-badges">
+                  {p.is_admin && <span className="badge badge-admin">Admin</span>}
+                  {p.is_disabled ? <span className="badge badge-disabled">Disabled</span> : <span className="badge badge-active">Active</span>}
+                  {p.id === currentUserId && <span className="badge" style={{background:"#fef9c3",color:"#a16207"}}>You</span>}
+                </div>
               </div>
-              <span style={{fontSize:12,fontWeight:800,flexShrink:0,color:pct>90?"#e11d48":pct>70?"#92400e":"var(--admin)"}}>{pct.toFixed(0)}%</span>
             </div>
-
-            {/* segmented bar */}
-            <div style={{height:6,background:"#e5e7eb",borderRadius:99,overflow:"hidden",marginBottom:8,display:"flex"}}>
-              {(p.storage_used||0) > 0 && (
+            <div className="user-card-meta">
+              <span className="user-meta-item"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>{formatGB(p.storage_used)} used</span>
+              <span className="user-meta-item"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>{formatGB(p.storage_limit)} limit</span>
+            </div>
+            <div className="user-stor-bar"><div className="user-stor-fill" style={{width:`${usedPct}%`}}/></div>
+            <div className="user-actions">
+              <button className="ua-btn edit" onClick={() => setEditTarget(p)}><svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit</button>
+              {p.id !== currentUserId && (
                 <>
-                  <div style={{width:`${p.storage_limit?(supaGB/p.storage_limit)*100:0}%`,background:"var(--teal)",transition:"width 0.4s"}}/>
-                  <div style={{width:`${p.storage_limit?(gdriveGB/p.storage_limit)*100:0}%`,background:"#4285F4",transition:"width 0.4s"}}/>
+                  <button className={`ua-btn ${p.is_disabled?"enable":"disable"}`} onClick={() => handleToggleDisable(p)}>
+                    {p.is_disabled ? "Enable" : "Disable"}
+                  </button>
+                  <button className="ua-btn del" onClick={() => setDeleteTarget(p)}><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>Del</button>
                 </>
               )}
-            </div>
-
-            {/* numbers row */}
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:6}}>
-              <span style={{fontSize:11,color:"var(--muted)"}}>
-                {formatGB(p.storage_used||0)} <span style={{color:"#9ca3af"}}>of</span> {formatGB(p.storage_limit||0)}
-              </span>
-              <div style={{display:"flex",gap:6}}>
-                {supaGB > 0 && (
-                  <span style={{fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:6,background:"#CFFAF4",color:"#059669"}}>
-                    ☁ {formatGB(supaGB)}
-                  </span>
-                )}
-                {gdriveGB > 0 && (
-                  <span style={{fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:6,background:"#DBEAFE",color:"#1D4ED8"}}>
-                    📁 {formatGB(gdriveGB)}
-                  </span>
-                )}
-              </div>
             </div>
           </div>
         );
       })}
-    </div>
+      {editTarget !== undefined && <EditUserSheet profile={editTarget} onClose={() => setEditTarget(undefined)} onSaved={load} showToast={showToast}/>}
+      {deleteTarget && <DeleteConfirmSheet title="Delete user?" sub={`Permanently delete "${deleteTarget.full_name||deleteTarget.email}" and all their files. This cannot be undone.`} onClose={() => setDeleteTarget(null)} onConfirm={() => handleDelete(deleteTarget)}/>}
+    </>
   );
 }
-
 
 /* ════════════════════════════════
    ADMIN PAGE
@@ -1434,7 +1250,7 @@ function AdminPage({ user, userId, onLogout, showToast, refreshKey }) {
 }
 
 /* ════════════════════════════════
-   HOME / FILES / GALLERY BODIES
+   HOME BODY — with realtime
 ════════════════════════════════ */
 function HomeBody({ userId, showToast, onUploadDone, refreshKey, onNavigate }) {
   const [files, setFiles]     = useState([]);
@@ -1443,11 +1259,40 @@ function HomeBody({ userId, showToast, onUploadDone, refreshKey, onNavigate }) {
   const [viewer, setViewer]   = useState(null);
   const [opts,   setOpts]     = useState(null);
   const mcColors = ["mc1","mc2","mc3","mc4","mc5","mc6"];
-  const load = useCallback(async () => { setLoading(true); const data = await fetchFiles(userId); setFiles(data); setLoading(false); }, [userId]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const data = await fetchFiles(userId);
+    setFiles(data);
+    setLoading(false);
+  }, [userId]);
+
   useEffect(() => { load(); }, [load, refreshKey]);
+
+  // ── Realtime subscription ──
+  useEffect(() => {
+    if (!userId) return;
+    const channel = supabase
+      .channel("home-files-" + userId)
+      .on("postgres_changes", {
+        event: "*", schema: "public", table: "files",
+        filter: `user_id=eq.${userId}`,
+      }, (payload) => {
+        if (payload.eventType === "INSERT") {
+          setFiles(prev => [payload.new, ...prev]);
+        } else if (payload.eventType === "DELETE") {
+          setFiles(prev => prev.filter(f => f.id !== payload.old.id));
+        } else if (payload.eventType === "UPDATE") {
+          setFiles(prev => prev.map(f => f.id === payload.new.id ? payload.new : f));
+        }
+      })
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [userId]);
+
   const handleDelete = async (record) => {
     setOpts(null);
-    try { await deleteFile(record); showToast("🗑️ File deleted"); load(); onUploadDone(); }
+    try { await deleteFile(record); showToast("🗑️ File deleted"); onUploadDone(); }
     catch (e) { showToast("❌ " + e.message); }
   };
   const imageFiles = files.filter(f => f.category==="images").slice(0,6);
@@ -1484,13 +1329,16 @@ function HomeBody({ userId, showToast, onUploadDone, refreshKey, onNavigate }) {
         {imageFiles.length === 0 ? <div className="empty" style={{padding:"16px 0"}}><div className="empty-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div><p>Upload images to see them here</p></div>
         : <div className="media-grid">{imageFiles.map((f,i) => <div className={`media-cell ${mcColors[i%6]}`} key={f.id} onClick={() => setViewer(f)}><ImageThumb record={f}/></div>)}</div>}
       </div>
-      {showUp && <UploadSheet onClose={() => setShowUp(false)} userId={userId} onUploaded={() => { load(); onUploadDone(); }} showToast={showToast}/>}
+      {showUp && <UploadSheet onClose={() => setShowUp(false)} userId={userId} onUploaded={() => onUploadDone()} showToast={showToast}/>}
       {viewer  && <FileViewer record={viewer} onClose={() => setViewer(null)} onDownload={r => { downloadFile(r); showToast("⬇️ Downloading…"); }}/>}
       {opts    && <FileOptions record={opts} onClose={() => setOpts(null)} onView={() => { setViewer(opts); setOpts(null); }} onDownload={r => { downloadFile(r); showToast("⬇️ Downloading…"); setOpts(null); }} onDelete={() => handleDelete(opts)}/>}
     </>
   );
 }
 
+/* ════════════════════════════════
+   FILES BODY — with realtime
+════════════════════════════════ */
 function FilesBody({ userId, showToast, refreshKey, onUploadDone }) {
   const [files, setFiles]     = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1499,12 +1347,44 @@ function FilesBody({ userId, showToast, refreshKey, onUploadDone }) {
   const [viewer, setViewer]   = useState(null);
   const [opts, setOpts]       = useState(null);
   const [showUp, setShowUp]   = useState(false);
-  const load = useCallback(async () => { setLoading(true); const data = await fetchFiles(userId, filter==="all"?null:filter); setFiles(data); setLoading(false); }, [userId, filter]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const data = await fetchFiles(userId, filter==="all"?null:filter);
+    setFiles(data);
+    setLoading(false);
+  }, [userId, filter]);
+
   useEffect(() => { load(); }, [load, refreshKey]);
+
+  // ── Realtime subscription ──
+  useEffect(() => {
+    if (!userId) return;
+    const channel = supabase
+      .channel("files-body-" + userId + "-" + filter)
+      .on("postgres_changes", {
+        event: "*", schema: "public", table: "files",
+        filter: `user_id=eq.${userId}`,
+      }, (payload) => {
+        if (payload.eventType === "INSERT") {
+          // Only add to list if it matches the current filter
+          const newFile = payload.new;
+          const matchesFilter = filter === "all" || newFile.category === filter;
+          if (matchesFilter) setFiles(prev => [newFile, ...prev]);
+        } else if (payload.eventType === "DELETE") {
+          setFiles(prev => prev.filter(f => f.id !== payload.old.id));
+        } else if (payload.eventType === "UPDATE") {
+          setFiles(prev => prev.map(f => f.id === payload.new.id ? payload.new : f));
+        }
+      })
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [userId, filter]);
+
   const visible = files.filter(f => f.original_name.toLowerCase().includes(query.toLowerCase()));
   const handleDelete = async (record) => {
     setOpts(null);
-    try { await deleteFile(record); showToast("🗑️ File deleted"); load(); onUploadDone(); }
+    try { await deleteFile(record); showToast("🗑️ File deleted"); onUploadDone(); }
     catch (e) { showToast("❌ " + e.message); }
   };
   return (
@@ -1524,25 +1404,54 @@ function FilesBody({ userId, showToast, refreshKey, onUploadDone }) {
               <div className={`file-thumb ft-${getFileType(f.category)}`}><FileThumb type={getFileType(f.category)}/></div>
               <div className="file-info">
                 <p className="file-name">{f.original_name}</p>
-                <p className="file-meta">{timeAgo(f.created_at)} · {formatSize(f.size)} {f.storage_provider==="gdrive"&&<span className="file-provider-badge badge-gdrive">GDrive</span>}</p>
+                <p className="file-meta">{timeAgo(f.created_at)} · {formatSize(f.size)}</p>
               </div>
               <span className="file-dots" onClick={e => { e.stopPropagation(); setOpts(f); }}>···</span>
             </div>
           ))}</div>}
       </div>
-      {showUp && <UploadSheet onClose={() => setShowUp(false)} userId={userId} onUploaded={() => { load(); onUploadDone(); }} showToast={showToast}/>}
+      {showUp && <UploadSheet onClose={() => setShowUp(false)} userId={userId} onUploaded={() => onUploadDone()} showToast={showToast}/>}
       {viewer  && <FileViewer record={viewer} onClose={() => setViewer(null)} onDownload={r => { downloadFile(r); showToast("⬇️ Downloading…"); }}/>}
       {opts    && <FileOptions record={opts} onClose={() => setOpts(null)} onView={() => { setViewer(opts); setOpts(null); }} onDownload={r => { downloadFile(r); showToast("⬇️ Downloading…"); setOpts(null); }} onDelete={() => handleDelete(opts)}/>}
     </>
   );
 }
 
+/* ════════════════════════════════
+   GALLERY BODY — with realtime
+════════════════════════════════ */
 function GalleryBody({ userId, showToast, refreshKey }) {
   const [files, setFiles]     = useState([]);
   const [loading, setLoading] = useState(true);
   const [viewer, setViewer]   = useState(null);
   const mcColors = ["mc1","mc2","mc3","mc4","mc5","mc6"];
-  useEffect(() => { setLoading(true); fetchFiles(userId, "images").then(d => setFiles(d)).finally(() => setLoading(false)); }, [userId, refreshKey]);
+
+  useEffect(() => {
+    setLoading(true);
+    fetchFiles(userId, "images").then(d => setFiles(d)).finally(() => setLoading(false));
+  }, [userId, refreshKey]);
+
+  // ── Realtime subscription ──
+  useEffect(() => {
+    if (!userId) return;
+    const channel = supabase
+      .channel("gallery-files-" + userId)
+      .on("postgres_changes", {
+        event: "*", schema: "public", table: "files",
+        filter: `user_id=eq.${userId}`,
+      }, (payload) => {
+        if (payload.eventType === "INSERT" && payload.new.category === "images") {
+          setFiles(prev => [payload.new, ...prev]);
+        } else if (payload.eventType === "DELETE") {
+          setFiles(prev => prev.filter(f => f.id !== payload.old.id));
+        } else if (payload.eventType === "UPDATE" && payload.new.category === "images") {
+          setFiles(prev => prev.map(f => f.id === payload.new.id ? payload.new : f));
+        }
+      })
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [userId]);
+
   return (
     <>
       <div className="home-body">
@@ -1668,7 +1577,7 @@ function HomePage({ user, onLogout, isAdmin }) {
             <div className="stor-top"><span className="stor-lbl">Storage Used</span><span className="stor-amt">{profile ? `${formatGB(profile.storage_used)} / ${formatGB(profile.storage_limit)}` : "Loading…"}</span></div>
             <div className="stor-track"><div className="stor-fill" style={{width:`${usedPct}%`}}/></div>
             <div className="stor-types">
-              {[["#7FFFD4","Supabase"],["#93C5FD","GDrive"],["#FDE68A","Docs"]].map(([c,l]) => <div className="stor-type" key={l}><div className="s-dot" style={{background:c}}/><span>{l}</span></div>)}
+              {[["#7FFFD4","Images"],["#C4B5FD","Videos"],["#FDE68A","Docs"]].map(([c,l]) => <div className="stor-type" key={l}><div className="s-dot" style={{background:c}}/><span>{l}</span></div>)}
             </div>
           </div>
         </div>
