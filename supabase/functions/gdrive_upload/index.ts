@@ -128,12 +128,12 @@ serve(async (req: Request) => {
     );
   } catch (err) {
     console.error(err);
-    return new Response(
-      JSON.stringify({ error: (err as Error).message }),
-      {+*
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 500,
-      }
-    );
+return new Response(
+  JSON.stringify({ error: (err as Error).message }),
+  {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    status: 500,
+  }
+);
   }
 });
