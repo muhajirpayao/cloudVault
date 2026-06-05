@@ -1251,6 +1251,144 @@ function AdminFilesTab({ showToast }) {
 }
 
 /* ════════════════════════════════
+   ADMIN STORAGE TAB  ← NEW
+════════════════════════════════ */
+function AdminStorageTab({ showToast }) {
+  const [profiles, setProfiles] = useState([]);
+  const [loading,  setLoading]  = useState(true);
+
+  useEffect(() => {
+    Promise.all([adminFetchAllProfiles(), adminFetchAllFiles()])
+      .then(([p]) => setProfiles(p))
+      .catch(e => showToast("❌ " + e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return (
+    <div style={{display:"flex",justifyContent:"center",padding:"40px 0"}}>
+      <div className="spin spin-admin" style={{width:32,height:32}}/>
+    </div>
+  );
+
+  const totalLimit  = profiles.reduce((s, p) => s + (p.storage_limit || 0), 0);
+  const totalUsed   = profiles.reduce((s, p) => s + (p.storage_used  || 0), 0);
+  const totalGdrive = profiles.reduce((s, p) => s + (p.gdrive_used   || 0), 0);
+  const totalSupa   = Math.max(0, totalUsed - totalGdrive);
+  const totalFree   = Math.max(0, totalLimit - totalUsed);
+  const usedPct     = totalLimit ? Math.min((totalUsed / totalLimit) * 100, 100) : 0;
+  const initials    = n => (n||"?").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
+  const sorted      = [...profiles].sort((a,b) => (b.storage_used||0) - (a.storage_used||0));
+
+  return (
+    <div>
+      {/* ── 4 stat cards ── */}
+      <div className="stor-stat-grid">
+        {[
+          { label:"Total Used",    value:formatGB(totalUsed),   sub:`of ${formatGB(totalLimit)} allocated`, color:"var(--admin)" },
+          { label:"Free Space",    value:formatGB(totalFree),   sub:`${(100-usedPct).toFixed(1)}% available`, color:"#059669" },
+          { label:"Supabase",      value:formatGB(totalSupa),   sub:"built-in storage",   color:"var(--teal2)" },
+          { label:"Google Drive",  value:formatGB(totalGdrive), sub:"connected drives",   color:"#4285F4" },
+        ].map(c => (
+          <div className="stor-stat-card" key={c.label}>
+            <p className="stor-stat-label">{c.label}</p>
+            <p className="stor-stat-value" style={{color:c.color}}>{c.value}</p>
+            <p className="stor-stat-sub">{c.sub}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Overall bar ── */}
+      <div className="stor-overview-card">
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+          <span style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>Platform usage</span>
+          <span style={{fontSize:12,fontWeight:600,color:"var(--admin)"}}>{usedPct.toFixed(1)}%</span>
+        </div>
+        {/* segmented bar */}
+        <div style={{height:10,background:"#e5e7eb",borderRadius:99,overflow:"hidden",marginBottom:10,display:"flex"}}>
+          {totalUsed > 0 && (
+            <>
+              <div style={{width:`${totalLimit ? (totalSupa/totalLimit)*100 : 0}%`,background:"var(--teal)",borderRadius:"99px 0 0 99px",transition:"width 0.6s"}}/>
+              <div style={{width:`${totalLimit ? (totalGdrive/totalLimit)*100 : 0}%`,background:"#4285F4",borderRadius:totalGdrive>0&&totalSupa===0?"99px":"0 99px 99px 0",transition:"width 0.6s"}}/>
+            </>
+          )}
+        </div>
+        <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
+          {[
+            { label:"Supabase",     color:"var(--teal)",  val:totalSupa   },
+            { label:"Google Drive", color:"#4285F4",      val:totalGdrive },
+            { label:"Free",         color:"#e5e7eb",      val:totalFree   },
+          ].map(b => (
+            <div key={b.label} style={{display:"flex",alignItems:"center",gap:6}}>
+              <div style={{width:10,height:10,borderRadius:99,background:b.color,border:b.color==="#e5e7eb"?"1px solid #d1d5db":"none",flexShrink:0}}/>
+              <span style={{fontSize:11,color:"var(--muted)"}}>{b.label} <strong style={{color:"var(--text)"}}>{formatGB(b.val)}</strong></span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Per-user breakdown ── */}
+      <p style={{fontFamily:"var(--nunito)",fontSize:"clamp(13px,3.8vw,15px)",fontWeight:800,color:"var(--text)",marginBottom:12}}>
+        Per-user breakdown
+      </p>
+
+      {sorted.length === 0 && (
+        <div className="empty"><div className="empty-icon"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div><h3>No users yet</h3></div>
+      )}
+
+      {sorted.map(p => {
+        const pct      = p.storage_limit ? Math.min((p.storage_used||0)/p.storage_limit*100, 100) : 0;
+        const barColor = pct > 90 ? "#e11d48" : pct > 70 ? "#f59e0b" : "var(--admin)";
+        const gdriveGB = p.gdrive_used || 0;
+        const supaGB   = Math.max(0, (p.storage_used||0) - gdriveGB);
+        return (
+          <div className="stor-user-card" key={p.id}>
+            {/* header row */}
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+              <div className="user-avatar" style={{width:36,height:36,fontSize:13,flexShrink:0}}>{initials(p.full_name)}</div>
+              <div style={{flex:1,minWidth:0}}>
+                <p style={{fontSize:13,fontWeight:700,color:"var(--text)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.full_name||"Unnamed"}</p>
+                <p style={{fontSize:11,color:"var(--muted)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.email}</p>
+              </div>
+              <span style={{fontSize:12,fontWeight:800,flexShrink:0,color:pct>90?"#e11d48":pct>70?"#92400e":"var(--admin)"}}>{pct.toFixed(0)}%</span>
+            </div>
+
+            {/* segmented bar */}
+            <div style={{height:6,background:"#e5e7eb",borderRadius:99,overflow:"hidden",marginBottom:8,display:"flex"}}>
+              {(p.storage_used||0) > 0 && (
+                <>
+                  <div style={{width:`${p.storage_limit?(supaGB/p.storage_limit)*100:0}%`,background:"var(--teal)",transition:"width 0.4s"}}/>
+                  <div style={{width:`${p.storage_limit?(gdriveGB/p.storage_limit)*100:0}%`,background:"#4285F4",transition:"width 0.4s"}}/>
+                </>
+              )}
+            </div>
+
+            {/* numbers row */}
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:6}}>
+              <span style={{fontSize:11,color:"var(--muted)"}}>
+                {formatGB(p.storage_used||0)} <span style={{color:"#9ca3af"}}>of</span> {formatGB(p.storage_limit||0)}
+              </span>
+              <div style={{display:"flex",gap:6}}>
+                {supaGB > 0 && (
+                  <span style={{fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:6,background:"#CFFAF4",color:"#059669"}}>
+                    ☁ {formatGB(supaGB)}
+                  </span>
+                )}
+                {gdriveGB > 0 && (
+                  <span style={{fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:6,background:"#DBEAFE",color:"#1D4ED8"}}>
+                    📁 {formatGB(gdriveGB)}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+
+/* ════════════════════════════════
    ADMIN PAGE
 ════════════════════════════════ */
 function AdminPage({ user, userId, onLogout, showToast, refreshKey }) {
