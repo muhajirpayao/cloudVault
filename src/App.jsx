@@ -1,9 +1,62 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useContext, createContext } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL  = "https://oynuqcbqcxfoalmlxiwx.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im95bnVxY2JxY3hmb2FsbWx4aXd4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMzE0ODgsImV4cCI6MjA5NTkwNzQ4OH0.04xWAzu6W_5inGAppDvRlDqrPoOOqbfSsAOdHyuAUEc";
 const supabase      = createClient(SUPABASE_URL, SUPABASE_ANON);
+
+/* ── SERVICE WORKER REGISTRATION ── */
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    const swCode = `
+const CACHE = "zharmvault-v1";
+self.addEventListener("install", e => { self.skipWaiting(); });
+self.addEventListener("activate", e => { e.waitUntil(clients.claim()); });
+self.addEventListener("fetch", e => {
+  const url = e.request.url;
+  if (url.includes("supabase.co/storage") || url.includes("supabase.co/object")) {
+    e.respondWith(
+      caches.open(CACHE).then(cache =>
+        cache.match(e.request).then(cached => {
+          if (cached) return cached;
+          return fetch(e.request).then(resp => {
+            if (resp.ok) cache.put(e.request, resp.clone());
+            return resp;
+          });
+        })
+      )
+    );
+  }
+});`;
+    const blob = new Blob([swCode], { type: "application/javascript" });
+    const url  = URL.createObjectURL(blob);
+    navigator.serviceWorker.register(url).catch(() => {});
+  });
+}
+
+/* ── THUMBNAIL URL CACHE (in-memory, session-long) ── */
+const thumbCache = new Map();
+
+/* ── SESSION STORAGE FILE CACHE ── */
+const FC_KEY = "zharmvault_files_cache";
+function saveFilesCache(userId, category, data) {
+  try {
+    const store = JSON.parse(sessionStorage.getItem(FC_KEY) || "{}");
+    store[`${userId}_${category || "all"}`] = { data, ts: Date.now() };
+    sessionStorage.setItem(FC_KEY, JSON.stringify(store));
+  } catch {}
+}
+function loadFilesCache(userId, category) {
+  try {
+    const store = JSON.parse(sessionStorage.getItem(FC_KEY) || "{}");
+    const entry = store[`${userId}_${category || "all"}`];
+    if (entry && Date.now() - entry.ts < 120000) return entry.data; // 2-min TTL
+  } catch {}
+  return null;
+}
+
+/* ── UPLOAD CONTEXT (global background upload state) ── */
+const UploadContext = createContext(null);
 
 /* ── HELPERS ── */
 function getBucket(file) {
@@ -53,6 +106,13 @@ function passwordStrength(pw) {
   return { score, label: labels[score] || "Strong" };
 }
 
+/* ── SHA-256 HASH FOR DUPLICATE DETECTION ── */
+async function hashFile(file) {
+  const buf = await file.arrayBuffer();
+  const hash = await crypto.subtle.digest("SHA-256", buf);
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2,"0")).join("");
+}
+
 /* ── STORAGE OPS ── */
 async function uploadFile(file, userId) {
   const bucket = getBucket(file);
@@ -60,10 +120,16 @@ async function uploadFile(file, userId) {
   const path   = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
   const { error: upErr } = await supabase.storage.from(bucket).upload(path, file, { cacheControl: "3600", upsert: false });
   if (upErr) throw upErr;
+
+  // Compute hash for duplicate detection storage
+  let fileHash = null;
+  try { fileHash = await hashFile(file); } catch {}
+
   const { error: dbErr } = await supabase.from("files").insert({
     user_id: userId, name: file.name, original_name: file.name,
     bucket, storage_path: path, size: file.size, mime_type: file.type,
     category: getCategory(file), storage_provider: "supabase",
+    file_hash: fileHash,
   });
   if (dbErr) throw dbErr;
   const { data: prof } = await supabase.from("profiles").select("storage_used").eq("id", userId).single();
@@ -72,18 +138,39 @@ async function uploadFile(file, userId) {
   }
 }
 
-async function getFileUrl(record) {
-  if (record.storage_provider === "gdrive") {
-    return record.gdrive_download_link;
+async function checkDuplicate(file, userId) {
+  try {
+    const hash = await hashFile(file);
+    const { data } = await supabase.from("files")
+      .select("id, original_name")
+      .eq("user_id", userId)
+      .eq("file_hash", hash)
+      .limit(1);
+    if (data && data.length > 0) return { isDuplicate: true, existing: data[0], hash };
+    return { isDuplicate: false, hash };
+  } catch {
+    return { isDuplicate: false, hash: null };
   }
-  if (record.bucket === "images") {
-    const { data } = supabase.storage.from("images").getPublicUrl(record.storage_path);
-    return data.publicUrl;
-  }
-  const { data, error } = await supabase.storage.from(record.bucket).createSignedUrl(record.storage_path, 3600);
-  if (error) throw error;
-  return data.signedUrl;
 }
+
+async function getFileUrl(record) {
+  const cacheKey = record.id + "_url";
+  if (thumbCache.has(cacheKey)) return thumbCache.get(cacheKey);
+  let url;
+  if (record.storage_provider === "gdrive") {
+    url = record.gdrive_download_link;
+  } else if (record.bucket === "images") {
+    const { data } = supabase.storage.from("images").getPublicUrl(record.storage_path);
+    url = data.publicUrl;
+  } else {
+    const { data, error } = await supabase.storage.from(record.bucket).createSignedUrl(record.storage_path, 3600);
+    if (error) throw error;
+    url = data.signedUrl;
+  }
+  if (url) thumbCache.set(cacheKey, url);
+  return url;
+}
+
 async function downloadFile(record) {
   const url = await getFileUrl(record);
   const a = document.createElement("a");
@@ -96,6 +183,7 @@ async function deleteFile(record) {
     await supabase.storage.from(record.bucket).remove([record.storage_path]);
     await supabase.from("files").delete().eq("id", record.id);
   }
+  thumbCache.delete(record.id + "_url");
   const { data: prof } = await supabase.from("profiles").select("storage_used").eq("id", record.user_id).single();
   if (prof) {
     const newUsed = Math.max(0, (prof.storage_used || 0) - (record.size || 0));
@@ -103,15 +191,48 @@ async function deleteFile(record) {
   }
 }
 async function fetchFiles(userId, category) {
-  let q = supabase.from("files").select("*").eq("user_id", userId).order("created_at", { ascending: false });
-  if (category) q = q.eq("category", category);
-  const { data, error } = await q;
-  if (error) throw error;
-  return data || [];
+  const cached = loadFilesCache(userId, category);
+  const doFetch = async () => {
+    let q = supabase.from("files").select("*").eq("user_id", userId).order("created_at", { ascending: false });
+    if (category) q = q.eq("category", category);
+    const { data, error } = await q;
+    if (error) throw error;
+    const result = data || [];
+    saveFilesCache(userId, category, result);
+    return result;
+  };
+  if (cached) {
+    doFetch().catch(() => {}); // background refresh
+    return cached;
+  }
+  return doFetch();
 }
 async function fetchProfile(userId) {
   const { data } = await supabase.from("profiles").select("*").eq("id", userId).single();
   return data;
+}
+
+/* ── PARALLEL UPLOAD (3 at a time) ── */
+async function uploadBatch(items, userId, onProgress) {
+  const CONCURRENCY = 3;
+  const results = new Array(items.length).fill(null);
+  let idx = 0;
+  async function worker() {
+    while (idx < items.length) {
+      const i = idx++;
+      onProgress(i, "uploading");
+      try {
+        await uploadFile(items[i].file, userId);
+        results[i] = { ok: true };
+        onProgress(i, "done");
+      } catch (e) {
+        results[i] = { ok: false, error: e.message };
+        onProgress(i, "error", e.message);
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+  return results;
 }
 
 /* ── ADMIN OPS ── */
@@ -143,8 +264,7 @@ async function adminDeleteProfile(id) {
 }
 async function adminCreateUser({ full_name, email, password, storage_limit, is_admin }) {
   const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
-    email,
-    password,
+    email, password,
     options: { data: { full_name }, emailRedirectTo: window.location.origin },
   });
   if (signUpErr) throw signUpErr;
@@ -275,9 +395,6 @@ html,body{height:100%;overflow-x:hidden}
 .file-size{font-size:clamp(10px,2.8vw,12px);font-weight:600;color:#6b7280;flex-shrink:0}
 .file-dots{padding:4px 6px;cursor:pointer;color:#9ca3af;font-size:16px;letter-spacing:1px;flex-shrink:0;border-radius:8px;transition:background 0.15s}
 .file-dots:hover{background:#f3f4f6}
-.file-provider-badge{font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;flex-shrink:0}
-.badge-gdrive{background:#DBEAFE;color:#1D4ED8}
-.badge-supabase{background:#CFFAF4;color:#059669}
 
 /* MEDIA GRID */
 .media-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(6px,2vw,8px)}
@@ -328,10 +445,12 @@ html,body{height:100%;overflow-x:hidden}
 /* MULTI-UPLOAD QUEUE */
 .queue-list{display:flex;flex-direction:column;gap:8px;margin-bottom:16px}
 .queue-item{display:flex;align-items:center;gap:10px;background:#f9fafb;border-radius:12px;padding:10px 12px}
+.queue-item.dup-warn{background:#fffbeb;border:1px solid #fde68a}
 .queue-item-name{flex:1;font-size:clamp(11px,3vw,13px);font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .queue-item-size{font-size:11px;color:var(--muted);flex-shrink:0}
 .queue-item-status{flex-shrink:0;font-size:16px}
 .queue-remove{flex-shrink:0;width:22px;height:22px;border-radius:50%;background:#fee2e2;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#e11d48;font-size:14px;font-weight:700;line-height:1}
+.dup-badge{font-size:9px;font-weight:700;background:#fef9c3;color:#a16207;padding:2px 6px;border-radius:4px;flex-shrink:0}
 .upload-all-btn{width:100%;padding:clamp(13px,3.8vw,16px);background:linear-gradient(135deg,var(--teal) 0%,var(--teal3) 100%);border:none;border-radius:99px;font-family:var(--nunito);font-size:clamp(14px,4vw,16px);font-weight:700;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 6px 22px rgba(0,180,160,0.35);margin-top:12px}
 .upload-all-btn:disabled{opacity:0.6;cursor:not-allowed}
 
@@ -340,6 +459,21 @@ html,body{height:100%;overflow-x:hidden}
 .prog-bar-label{font-size:clamp(12px,3.2vw,13px);font-weight:600;color:#059669;margin-bottom:8px;display:flex;justify-content:space-between}
 .prog-bar-track{height:7px;background:#dcfce7;border-radius:99px;overflow:hidden}
 .prog-bar-fill{height:100%;background:linear-gradient(90deg,var(--teal),var(--teal3));border-radius:99px;transition:width 0.3s ease}
+
+/* FLOATING UPLOAD TRAY */
+.upload-tray{position:fixed;bottom:clamp(76px,18vw,92px);left:50%;transform:translateX(-50%);width:calc(100% - 32px);max-width:430px;background:var(--white);border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,0.18);z-index:300;border:1px solid var(--border);overflow:hidden;animation:slideUp 0.2s ease}
+.upload-tray-header{display:flex;align-items:center;gap:10px;padding:12px 14px;background:linear-gradient(135deg,var(--teal),var(--teal3));cursor:pointer}
+.upload-tray-title{flex:1;font-family:var(--nunito);font-size:13px;font-weight:700;color:#fff}
+.upload-tray-count{font-size:12px;color:rgba(255,255,255,0.8)}
+.upload-tray-toggle{width:24px;height:24px;background:rgba(255,255,255,0.2);border-radius:50%;display:flex;align-items:center;justify-content:center;border:none;cursor:pointer}
+.upload-tray-toggle svg{width:14px;height:14px;stroke:#fff;fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+.upload-tray-body{padding:10px 14px 14px;max-height:200px;overflow-y:auto}
+.tray-item{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f3f4f6}
+.tray-item:last-child{border-bottom:none}
+.tray-item-name{flex:1;font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tray-item-status{font-size:11px;flex-shrink:0}
+.tray-progress{height:3px;background:#f3f4f6;border-radius:99px;margin-top:8px;overflow:hidden}
+.tray-progress-fill{height:100%;background:linear-gradient(90deg,var(--teal),var(--teal3));border-radius:99px;transition:width 0.4s ease}
 
 /* FILE VIEWER */
 .viewer-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:300;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:clamp(16px,5vw,28px);animation:fadeIn 0.2s ease}
@@ -358,6 +492,7 @@ html,body{height:100%;overflow-x:hidden}
 .viewer-btn{flex:1;padding:clamp(11px,3.2vw,14px);border-radius:99px;border:none;font-family:var(--nunito);font-size:clamp(13px,3.5vw,15px);font-weight:700;cursor:pointer;transition:opacity 0.2s}
 .viewer-btn.primary{background:linear-gradient(135deg,var(--teal),var(--teal3));color:#fff;box-shadow:0 4px 16px rgba(0,180,160,0.4)}
 .viewer-btn.secondary{background:rgba(255,255,255,0.15);color:#fff;border:1.5px solid rgba(255,255,255,0.3);backdrop-filter:blur(6px)}
+.offline-badge{position:absolute;top:60px;right:16px;background:rgba(0,0,0,0.6);color:#7FFFD4;font-size:10px;font-weight:700;padding:3px 8px;border-radius:99px;border:1px solid rgba(127,255,212,0.4)}
 
 /* FILE OPTIONS */
 .opt-list{display:flex;flex-direction:column;gap:4px}
@@ -526,6 +661,99 @@ const FileThumb = ({ type }) => {
 };
 
 /* ════════════════════════════════
+   UPLOAD CONTEXT PROVIDER
+════════════════════════════════ */
+function UploadProvider({ children }) {
+  const [tray, setTray] = useState(null); // { items, minimized, done, total }
+
+  const startUpload = useCallback((items, userId, onAllDone, showToast) => {
+    const mapped = items.map(i => ({ ...i, status: "pending" }));
+    setTray({ items: mapped, minimized: false, userId, onAllDone, showToast });
+
+    // Run uploads with parallel batch
+    let done = 0;
+    uploadBatch(mapped, userId, (idx, status, errMsg) => {
+      setTray(prev => {
+        if (!prev) return prev;
+        const newItems = prev.items.map((it, i) =>
+          i === idx ? { ...it, status, error: errMsg } : it
+        );
+        if (status === "done") done++;
+        return { ...prev, items: newItems };
+      });
+    }).then(() => {
+      showToast(`✅ ${done} file${done !== 1 ? "s" : ""} uploaded!`);
+      onAllDone();
+      setTimeout(() => setTray(null), 3000);
+    });
+  }, []);
+
+  const toggleMinimize = useCallback(() => {
+    setTray(prev => prev ? { ...prev, minimized: !prev.minimized } : prev);
+  }, []);
+
+  const dismissTray = useCallback(() => setTray(null), []);
+
+  return (
+    <UploadContext.Provider value={{ tray, startUpload, toggleMinimize, dismissTray }}>
+      {children}
+      {tray && <FloatingUploadTray tray={tray} onToggle={toggleMinimize} onDismiss={dismissTray} />}
+    </UploadContext.Provider>
+  );
+}
+
+function FloatingUploadTray({ tray, onToggle, onDismiss }) {
+  const done  = tray.items.filter(i => i.status === "done").length;
+  const total = tray.items.length;
+  const pct   = total > 0 ? Math.round((done / total) * 100) : 0;
+  const allDone = done === total;
+
+  return (
+    <div className="upload-tray">
+      <div className="upload-tray-header" onClick={onToggle}>
+        <span className="upload-tray-title">
+          {allDone ? "✅ Upload complete" : `Uploading files…`}
+        </span>
+        <span className="upload-tray-count">{done}/{total}</span>
+        <button className="upload-tray-toggle" onClick={e => { e.stopPropagation(); onToggle(); }}>
+          <svg viewBox="0 0 24 24">
+            {tray.minimized
+              ? <polyline points="18 15 12 9 6 15"/>
+              : <polyline points="6 9 12 15 18 9"/>}
+          </svg>
+        </button>
+        {allDone && (
+          <button className="upload-tray-toggle" onClick={e => { e.stopPropagation(); onDismiss(); }} style={{marginLeft:4}}>
+            <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        )}
+      </div>
+      {!tray.minimized && (
+        <div className="upload-tray-body">
+          <div className="tray-progress" style={{marginBottom:10}}>
+            <div className="tray-progress-fill" style={{width:`${pct}%`}}/>
+          </div>
+          {tray.items.map((item, i) => (
+            <div className="tray-item" key={i}>
+              <span style={{fontSize:14,flexShrink:0}}>
+                {item.status === "pending"   ? "○"
+                : item.status === "uploading"? <span className="spin spin-teal" style={{width:12,height:12,borderWidth:2,display:"inline-block"}}/>
+                : item.status === "done"     ? "✓"
+                : "✕"}
+              </span>
+              <span className="tray-item-name">{item.file.name}</span>
+              <span className="tray-item-status" style={{color: item.status==="done"?"#059669":item.status==="error"?"#e11d48":"#9ca3af",fontSize:11}}>
+                {item.status === "done" ? formatSize(item.file.size) : item.status === "error" ? "Failed" : ""}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ════════════════════════════════
    SHARED COMPONENTS
 ════════════════════════════════ */
 function LogoutConfirm({ onCancel, onConfirm }) {
@@ -589,8 +817,8 @@ function AuthPage({ onAuth }) {
       if (error) throw error;
       const user = data.user;
       const profile = await fetchProfile(user.id);
-      if (profile?.is_disabled) { await supabase.auth.signOut(); throw new Error("Your account has been disabled. Please contact your administrator."); }
-      if (!profile) { await supabase.auth.signOut(); throw new Error("Account not found. Please contact your administrator."); }
+      if (profile?.is_disabled) { await supabase.auth.signOut(); throw new Error("Your account has been disabled."); }
+      if (!profile) { await supabase.auth.signOut(); throw new Error("Account not found. Contact your administrator."); }
       onAuth(user);
     } catch (e) { setErr(e.message || "Invalid email or password."); }
     finally { setBusy(false); }
@@ -622,7 +850,7 @@ function AuthPage({ onAuth }) {
           <span className="auth-brand-name">Zharm<span>Vault</span></span>
         </div>
         <h2 className="auth-headline">Welcome Back 👋</h2>
-        <p className="auth-sub">Sign in with your credentials to access your files and storage.</p>
+        <p className="auth-sub">Sign in to access your files and storage.</p>
         {err && <div className="auth-err">{err}</div>}
         <div className="cv-field">
           <label>Email Address</label>
@@ -653,13 +881,27 @@ function AuthPage({ onAuth }) {
 }
 
 /* ════════════════════════════════
-   FILE VIEWER
+   FILE VIEWER (with offline badge)
 ════════════════════════════════ */
 function FileViewer({ record, onClose, onDownload }) {
   const [url, setUrl]   = useState(null);
   const [busy, setBusy] = useState(true);
   const [err, setErr]   = useState("");
-  useEffect(() => { getFileUrl(record).then(u => setUrl(u)).catch(e => setErr(e.message)).finally(() => setBusy(false)); }, [record]);
+  const [cached, setCached] = useState(false);
+
+  useEffect(() => {
+    getFileUrl(record)
+      .then(u => {
+        setUrl(u);
+        // Check if it's in SW cache
+        if ("caches" in window) {
+          caches.match(u).then(r => setCached(!!r)).catch(() => {});
+        }
+      })
+      .catch(e => setErr(e.message))
+      .finally(() => setBusy(false));
+  }, [record]);
+
   const type = getFileType(record.category);
   return (
     <div className="viewer-overlay" onClick={onClose}>
@@ -667,6 +909,7 @@ function FileViewer({ record, onClose, onDownload }) {
         <span className="viewer-title">{record.original_name}</span>
         <button className="viewer-close" onClick={onClose}><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
+      {cached && <div className="offline-badge">📶 Available offline</div>}
       <div onClick={e => e.stopPropagation()} style={{maxWidth:"100%",maxHeight:"70svh",display:"flex",alignItems:"center",justifyContent:"center"}}>
         {busy && <div className="spin" style={{width:36,height:36,borderWidth:3}}/>}
         {err  && <p style={{color:"#fca5a5",fontSize:13,textAlign:"center"}}>{err}</p>}
@@ -726,145 +969,142 @@ function FileOptions({ record, onClose, onView, onDownload, onDelete }) {
 }
 
 /* ════════════════════════════════
-   UPLOAD SHEET — Supabase only, no provider toggle
+   UPLOAD SHEET — with duplicate detection + background upload
 ════════════════════════════════ */
 function UploadSheet({ onClose, userId, onUploaded, showToast }) {
-  const [queue, setQueue]       = useState([]);
-  const [busy, setBusy]         = useState(false);
-  const [current, setCurrent]   = useState("");
-  const [doneCount, setDoneCount] = useState(0);
+  const [queue, setQueue]     = useState([]);
+  const [checking, setChecking] = useState(false);
+  const { startUpload }       = useContext(UploadContext);
   const imgRef = useRef(null);
   const vidRef = useRef(null);
   const docRef = useRef(null);
 
-  const addFiles = (fileList) => {
+  const addFiles = async (fileList) => {
     const incoming = Array.from(fileList);
-    setQueue(prev => {
-      const existing = new Set(prev.map(q => q.file.name + q.file.size));
-      const newOnes = incoming.filter(f => !existing.has(f.name + f.size));
-      return [...prev, ...newOnes.map(f => ({ file: f, status: "pending" }))];
-    });
-  };
-  const removeFromQueue = (idx) => setQueue(prev => prev.filter((_, i) => i !== idx));
-
-  const uploadAll = async () => {
-    if (queue.length === 0) return;
-    setBusy(true); setDoneCount(0);
-    let done = 0;
-    for (let i = 0; i < queue.length; i++) {
-      const item = queue[i];
-      if (item.status === "done") { done++; continue; }
-      setCurrent(item.file.name);
-      setQueue(prev => prev.map((q, idx) => idx === i ? { ...q, status: "uploading" } : q));
-      try {
-        await uploadFile(item.file, userId);
-        done++; setDoneCount(done);
-        setQueue(prev => prev.map((q, idx) => idx === i ? { ...q, status: "done" } : q));
-      } catch (e) {
-        setQueue(prev => prev.map((q, idx) => idx === i ? { ...q, status: "error", error: e.message } : q));
+    setChecking(true);
+    const newItems = [];
+    for (const file of incoming) {
+      const { isDuplicate, existing } = await checkDuplicate(file, userId);
+      const alreadyInQueue = queue.some(q => q.file.name === file.name && q.file.size === file.size);
+      if (!alreadyInQueue) {
+        newItems.push({ file, status: "pending", isDuplicate, existing });
       }
     }
-    setBusy(false); setCurrent("");
-    showToast(`✅ ${done} file${done !== 1 ? "s" : ""} uploaded!`);
-    onUploaded(); setTimeout(() => onClose(), 700);
+    setQueue(prev => [...prev, ...newItems]);
+    setChecking(false);
   };
 
-  const pendingCount = queue.filter(q => q.status === "pending" || q.status === "error").length;
-  const totalCount   = queue.length;
-  const statusIcon = (s) => {
-    if (s === "pending")   return <span style={{color:"#9ca3af"}}>○</span>;
-    if (s === "uploading") return <span className="spin spin-teal" style={{width:14,height:14,borderWidth:2}}/>;
-    if (s === "done")      return <span style={{color:"#059669"}}>✓</span>;
-    return <span style={{color:"#e11d48"}}>✕</span>;
+  const removeFromQueue = (idx) => setQueue(prev => prev.filter((_, i) => i !== idx));
+
+  const handleUploadAll = () => {
+    const toUpload = queue.filter(q => q.status === "pending");
+    if (toUpload.length === 0) return;
+    startUpload(toUpload, userId, onUploaded, showToast);
+    onClose();
   };
+
+  const pendingCount = queue.filter(q => q.status === "pending").length;
+  const dupCount     = queue.filter(q => q.isDuplicate).length;
 
   return (
-    <div className="overlay" onClick={!busy ? onClose : undefined}>
+    <div className="overlay" onClick={onClose}>
       <div className="sheet" onClick={e => e.stopPropagation()}>
         <div className="sheet-handle"/>
         <p className="sheet-title">Upload Files</p>
 
-        {!busy && (
-          <div className="upload-opts" style={{marginBottom: queue.length ? 16 : 0}}>
-            {[
-              { label:"Images",    sub:"Select multiple",   color:"teal",   accept:"image/*",                                           ref:imgRef, icon:<><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></> },
-              { label:"Videos",    sub:"Select multiple",   color:"violet", accept:"video/*",                                           ref:vidRef, icon:<><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></> },
-              { label:"Documents", sub:"PDF, DOC, ZIP…",    color:"blue",   accept:".pdf,.doc,.docx,.txt,.xlsx,.pptx,.zip",             ref:docRef, icon:<><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></> },
-              { label:"Any File",  sub:"All types",         color:"rose",   accept:"*",                                                 ref:null,   icon:<><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></> },
-            ].map((o, i) => (
-              <div key={i} className="upload-opt" onClick={() => {
-                if (o.ref) { o.ref.current.click(); return; }
-                const inp = document.createElement("input");
-                inp.type = "file"; inp.accept = o.accept; inp.multiple = true;
-                inp.onchange = e => addFiles(e.target.files); inp.click();
-              }}>
-                {o.ref && <input ref={o.ref} type="file" accept={o.accept} multiple style={{display:"none"}} onChange={e => addFiles(e.target.files)}/>}
-                <div className={`upload-opt-icon qa-icon ${o.color}`}><svg viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none">{o.icon}</svg></div>
-                <span className="upload-opt-label">{o.label}</span>
-                <span className="upload-opt-sub">{o.sub}</span>
-              </div>
-            ))}
+        <div className="upload-opts" style={{marginBottom: queue.length ? 16 : 0}}>
+          {[
+            { label:"Images",    sub:"Select multiple",   color:"teal",   accept:"image/*",                                           ref:imgRef, icon:<><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></> },
+            { label:"Videos",    sub:"Select multiple",   color:"violet", accept:"video/*",                                           ref:vidRef, icon:<><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></> },
+            { label:"Documents", sub:"PDF, DOC, ZIP…",    color:"blue",   accept:".pdf,.doc,.docx,.txt,.xlsx,.pptx,.zip",             ref:docRef, icon:<><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></> },
+            { label:"Any File",  sub:"All types",         color:"rose",   accept:"*",                                                 ref:null,   icon:<><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></> },
+          ].map((o, i) => (
+            <div key={i} className="upload-opt" onClick={() => {
+              if (o.ref) { o.ref.current.click(); return; }
+              const inp = document.createElement("input");
+              inp.type = "file"; inp.accept = o.accept; inp.multiple = true;
+              inp.onchange = e => addFiles(e.target.files); inp.click();
+            }}>
+              {o.ref && <input ref={o.ref} type="file" accept={o.accept} multiple style={{display:"none"}} onChange={e => addFiles(e.target.files)}/>}
+              <div className={`upload-opt-icon qa-icon ${o.color}`}><svg viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none">{o.icon}</svg></div>
+              <span className="upload-opt-label">{o.label}</span>
+              <span className="upload-opt-sub">{o.sub}</span>
+            </div>
+          ))}
+        </div>
+
+        {checking && (
+          <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 0",color:"var(--muted)",fontSize:13}}>
+            <span className="spin spin-teal" style={{width:14,height:14,borderWidth:2}}/>
+            Checking for duplicates…
+          </div>
+        )}
+
+        {dupCount > 0 && (
+          <div className="info-box info-box-warn" style={{marginBottom:12}}>
+            ⚠️ <strong>{dupCount} duplicate{dupCount>1?"s":""}</strong> detected. These files already exist in your vault.
           </div>
         )}
 
         {queue.length > 0 && (
           <>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-              <span style={{fontSize:"clamp(12px,3vw,13px)",fontWeight:700,color:"var(--text)"}}>{totalCount} file{totalCount !== 1?"s":""} selected</span>
-              {!busy && <span style={{fontSize:12,color:"var(--teal2)",fontWeight:600,cursor:"pointer"}} onClick={() => setQueue([])}>Clear all</span>}
+              <span style={{fontSize:"clamp(12px,3vw,13px)",fontWeight:700,color:"var(--text)"}}>{queue.length} file{queue.length!==1?"s":""} selected</span>
+              <span style={{fontSize:12,color:"var(--teal2)",fontWeight:600,cursor:"pointer"}} onClick={() => setQueue([])}>Clear all</span>
             </div>
-            {busy && current && (
-              <div className="prog-bar-wrap" style={{marginBottom:12}}>
-                <div className="prog-bar-label">
-                  <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"70%"}}>{current}</span>
-                  <span>{doneCount}/{totalCount}</span>
-                </div>
-                <div className="prog-bar-track">
-                  <div className="prog-bar-fill" style={{width:`${Math.round((doneCount/totalCount)*100)}%`}}/>
-                </div>
-              </div>
-            )}
             <div className="queue-list">
               {queue.map((item, i) => (
-                <div className="queue-item" key={i}>
-                  <span className="queue-item-status">{statusIcon(item.status)}</span>
+                <div className={`queue-item ${item.isDuplicate ? "dup-warn" : ""}`} key={i}>
+                  <span className="queue-item-status" style={{color:"#9ca3af"}}>○</span>
                   <span className="queue-item-name">{item.file.name}</span>
+                  {item.isDuplicate && <span className="dup-badge">Duplicate</span>}
                   <span className="queue-item-size">{formatSize(item.file.size)}</span>
-                  {!busy && item.status !== "done" && <button className="queue-remove" onClick={() => removeFromQueue(i)}>×</button>}
+                  <button className="queue-remove" onClick={() => removeFromQueue(i)}>×</button>
                 </div>
               ))}
             </div>
-            {!busy && pendingCount > 0 && (
-              <button className="upload-all-btn" onClick={uploadAll}>
+            {pendingCount > 0 && (
+              <button className="upload-all-btn" onClick={handleUploadAll}>
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
                 </svg>
-                Upload {pendingCount} file{pendingCount !== 1 ? "s" : ""}
+                Upload {pendingCount} file{pendingCount !== 1 ? "s" : ""} in background
               </button>
             )}
+            <p style={{textAlign:"center",fontSize:11,color:"var(--muted)",marginTop:8}}>
+              You can minimize and navigate away — uploads continue in background
+            </p>
           </>
         )}
-        {queue.length === 0 && <p style={{textAlign:"center",fontSize:"clamp(11px,3vw,13px)",color:"var(--muted)",marginTop:8}}>Select files above to add them to the queue</p>}
+        {queue.length === 0 && !checking && (
+          <p style={{textAlign:"center",fontSize:"clamp(11px,3vw,13px)",color:"var(--muted)",marginTop:8}}>Select files above to add them to the queue</p>
+        )}
       </div>
     </div>
   );
 }
 
 /* ════════════════════════════════
-   IMAGE THUMB
+   IMAGE THUMB (with memory cache)
 ════════════════════════════════ */
 function ImageThumb({ record }) {
-  const [url, setUrl] = useState(null);
+  const [url, setUrl] = useState(() => thumbCache.get(record.id + "_url") || null);
+
   useEffect(() => {
+    if (url) return;
     if (record.storage_provider === "gdrive") {
-      setUrl(record.gdrive_download_link);
+      const u = record.gdrive_download_link;
+      thumbCache.set(record.id + "_url", u);
+      setUrl(u);
     } else if (record.bucket === "images") {
       const { data } = supabase.storage.from("images").getPublicUrl(record.storage_path);
+      thumbCache.set(record.id + "_url", data.publicUrl);
       setUrl(data.publicUrl);
     }
-  }, [record]);
+  }, [record, url]);
+
   return url
-    ? <img src={url} alt={record.original_name} loading="lazy"/>
+    ? <img src={url} alt={record.original_name} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover",position:"absolute",inset:0}}/>
     : <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>;
 }
 
@@ -981,11 +1221,11 @@ function PrivacySecuritySheet({ user, onClose, showToast }) {
 
 function HelpSupportSheet({ onClose }) {
   const faqs = [
-    { q:"How do I upload files?", a:"Tap the + button at the bottom center. In the upload sheet, select your files by type (Images, Videos, Documents, or Any File)." },
+    { q:"How do I upload files?", a:"Tap the + button at the bottom center. Select files by type — uploads continue in the background even if you navigate away." },
     { q:"What file types are supported?", a:"All types: images (JPG, PNG, GIF, WebP), videos (MP4, MOV, AVI), and documents (PDF, DOC, DOCX, XLSX, PPTX, ZIP, TXT)." },
-    { q:"How do I share a file?", a:"Open a file, tap the ··· menu, then tap 'Share Link'. The URL will be copied to your clipboard." },
+    { q:"How does offline viewing work?", a:"Once you open a file, it's cached by the Service Worker. Files marked 'Available offline' can be viewed without internet." },
+    { q:"What is duplicate detection?", a:"Before uploading, each file's SHA-256 hash is computed and checked against your existing files. Duplicates are flagged so you can skip them." },
     { q:"Can I change my password?", a:"Yes! Go to Profile → Privacy & Security → Change Password." },
-    { q:"Who can access my files?", a:"Only you can access your files. Admins can view and manage all files in the system." },
     { q:"Where are my files stored?", a:"All files are stored securely on Supabase cloud storage." },
   ];
   const [open, setOpen] = useState(null);
@@ -1250,7 +1490,7 @@ function AdminPage({ user, userId, onLogout, showToast, refreshKey }) {
 }
 
 /* ════════════════════════════════
-   HOME BODY — with realtime
+   HOME BODY
 ════════════════════════════════ */
 function HomeBody({ userId, showToast, onUploadDone, refreshKey, onNavigate }) {
   const [files, setFiles]     = useState([]);
@@ -1265,26 +1505,28 @@ function HomeBody({ userId, showToast, onUploadDone, refreshKey, onNavigate }) {
     const data = await fetchFiles(userId);
     setFiles(data);
     setLoading(false);
+    // Preload image thumbnails in background
+    data.filter(f => f.category === "images").slice(0, 12).forEach(f => {
+      if (!thumbCache.has(f.id + "_url")) {
+        if (f.bucket === "images") {
+          const { data: d } = supabase.storage.from("images").getPublicUrl(f.storage_path);
+          thumbCache.set(f.id + "_url", d.publicUrl);
+          const img = new Image(); img.src = d.publicUrl; // preload
+        }
+      }
+    });
   }, [userId]);
 
   useEffect(() => { load(); }, [load, refreshKey]);
 
-  // ── Realtime subscription ──
   useEffect(() => {
     if (!userId) return;
     const channel = supabase
       .channel("home-files-" + userId)
-      .on("postgres_changes", {
-        event: "*", schema: "public", table: "files",
-        filter: `user_id=eq.${userId}`,
-      }, (payload) => {
-        if (payload.eventType === "INSERT") {
-          setFiles(prev => [payload.new, ...prev]);
-        } else if (payload.eventType === "DELETE") {
-          setFiles(prev => prev.filter(f => f.id !== payload.old.id));
-        } else if (payload.eventType === "UPDATE") {
-          setFiles(prev => prev.map(f => f.id === payload.new.id ? payload.new : f));
-        }
+      .on("postgres_changes", { event: "*", schema: "public", table: "files", filter: `user_id=eq.${userId}` }, (payload) => {
+        if (payload.eventType === "INSERT") setFiles(prev => [payload.new, ...prev]);
+        else if (payload.eventType === "DELETE") setFiles(prev => prev.filter(f => f.id !== payload.old.id));
+        else if (payload.eventType === "UPDATE") setFiles(prev => prev.map(f => f.id === payload.new.id ? payload.new : f));
       })
       .subscribe();
     return () => supabase.removeChannel(channel);
@@ -1337,7 +1579,7 @@ function HomeBody({ userId, showToast, onUploadDone, refreshKey, onNavigate }) {
 }
 
 /* ════════════════════════════════
-   FILES BODY — with realtime
+   FILES BODY
 ════════════════════════════════ */
 function FilesBody({ userId, showToast, refreshKey, onUploadDone }) {
   const [files, setFiles]     = useState([]);
@@ -1357,20 +1599,14 @@ function FilesBody({ userId, showToast, refreshKey, onUploadDone }) {
 
   useEffect(() => { load(); }, [load, refreshKey]);
 
-  // ── Realtime subscription ──
   useEffect(() => {
     if (!userId) return;
     const channel = supabase
       .channel("files-body-" + userId + "-" + filter)
-      .on("postgres_changes", {
-        event: "*", schema: "public", table: "files",
-        filter: `user_id=eq.${userId}`,
-      }, (payload) => {
+      .on("postgres_changes", { event: "*", schema: "public", table: "files", filter: `user_id=eq.${userId}` }, (payload) => {
         if (payload.eventType === "INSERT") {
-          // Only add to list if it matches the current filter
           const newFile = payload.new;
-          const matchesFilter = filter === "all" || newFile.category === filter;
-          if (matchesFilter) setFiles(prev => [newFile, ...prev]);
+          if (filter === "all" || newFile.category === filter) setFiles(prev => [newFile, ...prev]);
         } else if (payload.eventType === "DELETE") {
           setFiles(prev => prev.filter(f => f.id !== payload.old.id));
         } else if (payload.eventType === "UPDATE") {
@@ -1418,7 +1654,7 @@ function FilesBody({ userId, showToast, refreshKey, onUploadDone }) {
 }
 
 /* ════════════════════════════════
-   GALLERY BODY — with realtime
+   GALLERY BODY
 ════════════════════════════════ */
 function GalleryBody({ userId, showToast, refreshKey }) {
   const [files, setFiles]     = useState([]);
@@ -1428,25 +1664,27 @@ function GalleryBody({ userId, showToast, refreshKey }) {
 
   useEffect(() => {
     setLoading(true);
-    fetchFiles(userId, "images").then(d => setFiles(d)).finally(() => setLoading(false));
+    fetchFiles(userId, "images").then(d => {
+      setFiles(d);
+      // Preload all gallery thumbnails
+      d.forEach(f => {
+        if (!thumbCache.has(f.id + "_url") && f.bucket === "images") {
+          const { data } = supabase.storage.from("images").getPublicUrl(f.storage_path);
+          thumbCache.set(f.id + "_url", data.publicUrl);
+          const img = new Image(); img.src = data.publicUrl;
+        }
+      });
+    }).finally(() => setLoading(false));
   }, [userId, refreshKey]);
 
-  // ── Realtime subscription ──
   useEffect(() => {
     if (!userId) return;
     const channel = supabase
       .channel("gallery-files-" + userId)
-      .on("postgres_changes", {
-        event: "*", schema: "public", table: "files",
-        filter: `user_id=eq.${userId}`,
-      }, (payload) => {
-        if (payload.eventType === "INSERT" && payload.new.category === "images") {
-          setFiles(prev => [payload.new, ...prev]);
-        } else if (payload.eventType === "DELETE") {
-          setFiles(prev => prev.filter(f => f.id !== payload.old.id));
-        } else if (payload.eventType === "UPDATE" && payload.new.category === "images") {
-          setFiles(prev => prev.map(f => f.id === payload.new.id ? payload.new : f));
-        }
+      .on("postgres_changes", { event: "*", schema: "public", table: "files", filter: `user_id=eq.${userId}` }, (payload) => {
+        if (payload.eventType === "INSERT" && payload.new.category === "images") setFiles(prev => [payload.new, ...prev]);
+        else if (payload.eventType === "DELETE") setFiles(prev => prev.filter(f => f.id !== payload.old.id));
+        else if (payload.eventType === "UPDATE" && payload.new.category === "images") setFiles(prev => prev.map(f => f.id === payload.new.id ? payload.new : f));
       })
       .subscribe();
     return () => supabase.removeChannel(channel);
@@ -1597,7 +1835,7 @@ function HomePage({ user, onLogout, isAdmin }) {
     </div>
   );
 }
- // Vercel Testing//
+
 /* ════════════════════════════════
    ROOT
 ════════════════════════════════ */
@@ -1635,9 +1873,11 @@ export default function App() {
   return (
     <><style>{styles}</style>
     <div className="cv-app">
-      {!user
-        ? <AuthPage onAuth={async (u) => { const p = await fetchProfile(u.id); setIsAdmin(!!p?.is_admin); setUser(u); }}/>
-        : <HomePage user={user} onLogout={handleLogout} isAdmin={isAdmin}/>}
+      <UploadProvider>
+        {!user
+          ? <AuthPage onAuth={async (u) => { const p = await fetchProfile(u.id); setIsAdmin(!!p?.is_admin); setUser(u); }}/>
+          : <HomePage user={user} onLogout={handleLogout} isAdmin={isAdmin}/>}
+      </UploadProvider>
     </div></>
   );
 }
