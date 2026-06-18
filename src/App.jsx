@@ -114,27 +114,132 @@ async function hashFile(file) {
 }
 
 /* ── STORAGE OPS ── */
-async function uploadFile(file, userId) {
-  const bucket = getBucket(file);
-  const ext    = file.name.split(".").pop();
-  const path   = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-  const { error: upErr } = await supabase.storage.from(bucket).upload(path, file, { cacheControl: "3600", upsert: false });
-  if (upErr) throw upErr;
+// ─────────────────────────────────────────────────────────────
+// REPLACE your existing uploadFile() function in App.jsx
+// with this version. Everything else in App.jsx stays the same.
+// ─────────────────────────────────────────────────────────────
 
-  // Compute hash for duplicate detection storage
+async function uploadFile(file, userId) {
+  // ── Determine bucket for non-GDrive fallback ──
+  const bucket = getBucket(file);
+  const category = getCategory(file);
+
+  // ── Compute hash for duplicate detection ──
   let fileHash = null;
   try { fileHash = await hashFile(file); } catch {}
 
-  const { error: dbErr } = await supabase.from("files").insert({
-    user_id: userId, name: file.name, original_name: file.name,
-    bucket, storage_path: path, size: file.size, mime_type: file.type,
-    category: getCategory(file), storage_provider: "supabase",
-    file_hash: fileHash,
+  // ── Try Google Drive upload via Edge Function ──
+  let gdriveResult = null;
+  let uploadError  = null;
+
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const res = await fetch(
+      `${SUPABASE_URL}/functions/v1/gdrive-upload`,
+      {
+        method: "POST",
+        headers: {
+          // Pass the anon key so the Edge Function can verify the caller
+          apikey: SUPABASE_ANON,
+          authorization: `Bearer ${SUPABASE_ANON}`,
+        },
+        body: formData,
+      }
+    );
+
+    const data = await res.json();
+
+    if (!res.ok || data.error) {
+      throw new Error(data.error || `Edge Function returned ${res.status}`);
+    }
+
+    gdriveResult = data;
+    // data shape:
+    // {
+    //   gdrive_file_id: string
+    //   gdrive_web_view_link: string
+    //   gdrive_download_link: string
+    //   gdrive_account_index: number   ← NEW: which account stored the file
+    // }
+  } catch (err) {
+    uploadError = err;
+    console.error("GDrive upload failed, falling back to Supabase storage:", err);
+  }
+
+  // ── If GDrive succeeded, save metadata ──
+  if (gdriveResult) {
+    const { error: dbErr } = await supabase.from("files").insert({
+      user_id:               userId,
+      name:                  file.name,
+      original_name:         file.name,
+      bucket:                "gdrive",
+      storage_path:          gdriveResult.gdrive_file_id,
+      size:                  file.size,
+      mime_type:             file.type,
+      category:              getCategory(file),
+      storage_provider:      "gdrive",
+      file_hash:             fileHash,
+      // GDrive-specific fields
+      gdrive_file_id:        gdriveResult.gdrive_file_id,
+      gdrive_web_view_link:  gdriveResult.gdrive_web_view_link,
+      gdrive_download_link:  gdriveResult.gdrive_download_link,
+      gdrive_account_index:  gdriveResult.gdrive_account_index, // ← NEW
+    });
+
+    if (dbErr) throw dbErr;
+
+    // Update user storage usage
+    const { data: prof } = await supabase
+      .from("profiles")
+      .select("storage_used")
+      .eq("id", userId)
+      .single();
+    if (prof) {
+      await supabase
+        .from("profiles")
+        .update({ storage_used: (prof.storage_used || 0) + file.size })
+        .eq("id", userId);
+    }
+
+    return; // success
+  }
+
+  // ── Fallback: upload to Supabase Storage ──
+  // (only reached if GDrive fails entirely)
+  const ext  = file.name.split(".").pop();
+  const path = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+
+  const { error: upErr } = await supabase.storage
+    .from(bucket)
+    .upload(path, file, { cacheControl: "3600", upsert: false });
+  if (upErr) throw upErr;
+
+  const { error: dbErr2 } = await supabase.from("files").insert({
+    user_id:          userId,
+    name:             file.name,
+    original_name:    file.name,
+    bucket,
+    storage_path:     path,
+    size:             file.size,
+    mime_type:        file.type,
+    category,
+    storage_provider: "supabase",
+    file_hash:        fileHash,
   });
-  if (dbErr) throw dbErr;
-  const { data: prof } = await supabase.from("profiles").select("storage_used").eq("id", userId).single();
+  if (dbErr2) throw dbErr2;
+
+  const { data: prof } = await supabase
+    .from("profiles")
+    .select("storage_used")
+    .eq("id", userId)
+    .single();
   if (prof) {
-    await supabase.from("profiles").update({ storage_used: (prof.storage_used || 0) + file.size }).eq("id", userId);
+    await supabase
+      .from("profiles")
+      .update({ storage_used: (prof.storage_used || 0) + file.size })
+      .eq("id", userId);
   }
 }
 
@@ -1846,7 +1951,7 @@ export default function App() {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       const u = session?.user ?? null;
       if (u) {
-        const p = await fetchProfile(u.id);
+        const p = await fetchProfile(u.id); 
         if (!p || p.is_disabled) { await supabase.auth.signOut(); setUser(null); return; }
         setIsAdmin(!!p?.is_admin);
       }

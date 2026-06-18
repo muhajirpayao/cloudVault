@@ -1,6 +1,8 @@
 useEffect(() => {
   if (!userId) return;
-
+  supabase.auth.getSession().then(({ data, error }) => {
+  console.log('Session:', data.session?.user?.id, 'Error:', error);
+});
   const channel = supabase
     .channel('files-changes-' + userId)
     .on('postgres_changes', {
