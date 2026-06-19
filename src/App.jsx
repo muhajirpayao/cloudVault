@@ -902,7 +902,7 @@ function RealStorageCard() {
   return (
     <div className="real-stor-card">
       <div className="real-stor-title">
-        <span>Real Drive Storage</span>
+        <span>Cloud Storage</span>
         <button onClick={load} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:"var(--teal2)",fontWeight:600,fontFamily:"var(--dm)"}}>
           {loading ? "Checking…" : "Refresh"}
         </button>
